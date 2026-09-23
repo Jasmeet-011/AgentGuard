@@ -12,13 +12,24 @@ propagate to already-running shells. No project files depend on this; it's a
 one-time machine setup note for whoever else clones the repo on Windows
 without `make`.
 
-## M1: Model price table source
+## M1: Model price table source (corrected)
 
-`MODEL_PRICES_PER_MILLION_TOKENS` in `config.py` comes from
-https://docs.claude.com/en/docs/about-claude/pricing (checked 2026-09-23):
-`claude-sonnet-5` $3 in / $15 out, `claude-haiku-4-5-20251001` $1 in / $5 out,
-per million tokens. Prompt-caching discounts are ignored (we don't use Anthropic
-prompt caching). A model missing from the table raises rather than costing $0.
+Fetched https://docs.claude.com/en/docs/about-claude/pricing on 2026-09-23; it
+302-redirects to https://platform.claude.com/docs/en/about-claude/pricing.
+Relevant rows from the Model pricing table (base input / output):
+
+    | Claude Sonnet 5  | $2 / MTok(3) | ... | $10 / MTok(3) |
+    | Claude Haiku 4.5 | $1 / MTok    | ... | $5 / MTok     |
+
+Footnote 3: "The $2/$10 per million input/output token pricing for Claude
+Sonnet 5, announced at launch as introductory pricing through August 31, 2026,
+is now the standard price. The previously scheduled increase to $3/$15 per
+million input/output tokens on September 1, 2026 will not occur."
+
+Correction: the M0 table had Sonnet 5 at $3/$15, and the first M1 commit
+recorded it here as "checked" when it had not been re-fetched. It is now
+$2/$10. Prompt-caching discounts are ignored (we don't use Anthropic prompt
+caching). A model missing from the table raises rather than costing $0.
 
 ## M1: One LLM call = one trace event
 
@@ -31,11 +42,18 @@ event. Non-LLM nodes (retrieval etc.) use `trace_node` directly.
 
 - The Anthropic SDK retries internally by default; set `max_retries=0` so
   tenacity is the only retry layer and the policy is visible in one place.
-- Added three config fields not in the M0 list, all needed to avoid hardcoding:
-  `enable_llm_cache` (the toggle M1 asks for), `llm_max_tokens` (required API
-  parameter, 2048), `llm_retry_attempts` (5).
-- The cache stores `model_dump(mode="json")` and re-validates on read, so a
-  cached result is an equal (not the same) object of the requested type.
+- Added config fields not in the M0 list, all needed to avoid hardcoding:
+  `enable_llm_cache` (the toggle M1 asks for), `llm_temperature` (0.0),
+  `llm_max_tokens` (required API parameter, 2048), `llm_retry_attempts` (5).
+- A cache entry is `{"result": ..., "usage": {input_tokens, output_tokens,
+  cost_usd, duration_ms}}`. On a hit the event keeps `cost_usd=0` (nothing was
+  spent) but `detail` carries `original_*` values, so eval reports can show what
+  a query really costs instead of a fake $0 / ~5ms. `original_duration_ms` is
+  the wall time of the API call(s) including any corrective retry.
+- The result is stored as `model_dump(mode="json")` and re-validated on read,
+  so a cached result is an equal (not the same) object of the requested type.
+- The cache key includes a `CACHE_FORMAT_VERSION` (now 2), so entries in the
+  old layout are ignored rather than misread.
 - A response with no tool call (e.g. `stop_reason=max_tokens`) is treated as a
   validation failure and gets the same single corrective retry.
 
@@ -43,3 +61,30 @@ event. Non-LLM nodes (retrieval etc.) use `trace_node` directly.
 
 `load_prompt` lives in `src/agentguard/prompts/__init__.py` so the directory
 that holds the `.md` prompts also owns loading them.
+
+## M1: Paths anchored to PROJECT_ROOT
+
+`PROJECT_ROOT = Path(__file__).resolve().parents[2]` (valid for the editable /
+src-layout install we use). All path defaults and `env_file` are absolute under
+it; a relative path given via env/`.env` is resolved against PROJECT_ROOT, not
+the cwd. This makes the CLI, Streamlit, and the MCP server (which Claude
+Desktop launches from an arbitrary cwd) all see the same files.
+
+## M1: Temperature is sent only to models that accept it
+
+Planned: pass `llm_temperature=0.0` on every call. Not possible as written:
+- anthropic SDK 1.8.0's `messages.create` has no `temperature` argument.
+- The API reference marks it deprecated: "Models released after Claude Opus 4.6
+  do not support setting temperature."
+- A test call on 2026-09-23 with `extra_body={"temperature": 0.0}`:
+  `claude-sonnet-5` → 400 "`temperature` is deprecated for this model";
+  `claude-haiku-4-5-20251001` → accepted.
+
+Decision (approved by Jasmeet): `MODELS_WITHOUT_TEMPERATURE` in config lists
+models that reject it (`claude-sonnet-5`). For every other model,
+`llm_temperature` is sent via `extra_body`. The temperature actually sent
+(or `None`) goes into the cache key and into `event.detail["temperature"]`.
+Consequence: generator, verifier, and judge (all Sonnet 5) run at the model's
+default sampling and cannot be pinned. Eval reproducibility comes from the
+diskcache, not from temperature. A fresh uncached rerun may differ slightly;
+report that if it happens.

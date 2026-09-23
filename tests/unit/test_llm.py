@@ -16,10 +16,12 @@ from agentguard.llm import (
     StructuredOutputError,
     UnknownModelPriceError,
     compute_cost_usd,
+    effective_temperature,
 )
 from agentguard.models import Trace
 
 MODEL = "claude-sonnet-5"
+HAIKU = "claude-haiku-4-5-20251001"
 
 
 class Capital(BaseModel):
@@ -70,6 +72,9 @@ def test_returns_validated_model_and_records_usage(tmp_path: Path) -> None:
     assert event.detail["cached"] is False
     kwargs = sdk.messages.create.call_args.kwargs
     assert kwargs["tool_choice"] == {"type": "tool", "name": TOOL_NAME}
+    assert kwargs["extra_body"] == {}  # claude-sonnet-5 rejects temperature
+    assert kwargs["max_tokens"] == 2048
+    assert event.detail["temperature"] is None
     assert kwargs["tools"][0]["input_schema"] == Capital.model_json_schema()
 
 
@@ -125,6 +130,85 @@ def test_cache_hit_returns_identical_object_with_zero_cost(tmp_path: Path) -> No
     assert (hit.cost_usd, hit.input_tokens, hit.output_tokens) == (0, 0, 0)
 
 
+def test_cache_hit_preserves_original_usage_in_detail(tmp_path: Path) -> None:
+    client, _ = make_client(
+        tmp_path,
+        [fake_response({"city": "Paris", "population_millions": 2.1}, 300, 40)],
+    )
+    trace = Trace(query_id="q1")
+    call(client, trace)
+    call(client, trace)
+    miss, hit = trace.events
+    assert hit.cost_usd == 0
+    assert hit.detail["original_input_tokens"] == 300
+    assert hit.detail["original_output_tokens"] == 40
+    assert hit.detail["original_cost_usd"] == pytest.approx(miss.cost_usd)
+    assert hit.detail["original_cost_usd"] == pytest.approx(compute_cost_usd(MODEL, 300, 40))
+    assert 0 <= hit.detail["original_duration_ms"] <= miss.duration_ms
+    assert "original_cost_usd" not in miss.detail
+
+
+def test_cache_originals_include_corrective_retry(tmp_path: Path) -> None:
+    client, _ = make_client(
+        tmp_path,
+        [
+            fake_response({"city": "Paris"}),
+            fake_response({"city": "Paris", "population_millions": 2.1}),
+        ],
+    )
+    trace = Trace(query_id="q1")
+    call(client, trace)
+    call(client, trace)
+    assert trace.events[1].detail["original_input_tokens"] == 200
+    assert trace.events[1].detail["original_output_tokens"] == 40
+
+
+def test_cache_survives_new_client_instance(tmp_path: Path) -> None:
+    first, _ = make_client(tmp_path, [fake_response({"city": "Paris", "population_millions": 2.1})])
+    call(first, Trace(query_id="q1"))
+    second, sdk = make_client(tmp_path, [])
+    trace = Trace(query_id="q2")
+    assert call(second, trace).city == "Paris"
+    assert sdk.messages.create.call_count == 0
+    assert trace.events[0].detail["original_input_tokens"] == 100
+
+
+@pytest.mark.parametrize(
+    "override",
+    [{"llm_temperature": 0.7}, {"llm_max_tokens": 512}],
+    ids=["temperature", "max_tokens"],
+)
+def test_temperature_and_max_tokens_are_part_of_cache_key(
+    tmp_path: Path, override: dict[str, Any]
+) -> None:
+    # Haiku, because temperature only reaches the API (and the key) for models that accept it.
+    def ask(client: LLMClient) -> Capital:
+        return client.complete_structured(
+            HAIKU, "Be terse.", "Capital?", Capital, Trace(query_id="q"), "policy"
+        )
+
+    client, _ = make_client(
+        tmp_path, [fake_response({"city": "Paris", "population_millions": 2.1})]
+    )
+    ask(client)
+    settings = Settings(anthropic_api_key="sk-test", cache_dir=tmp_path, **override)
+    sdk = MagicMock()
+    sdk.messages.create.side_effect = [fake_response({"city": "Lyon", "population_millions": 0.5})]
+    assert ask(LLMClient(settings, client=sdk)).city == "Lyon"
+    assert sdk.messages.create.call_count == 1
+
+
+def test_temperature_change_does_not_split_cache_for_models_without_it(tmp_path: Path) -> None:
+    client, _ = make_client(
+        tmp_path, [fake_response({"city": "Paris", "population_millions": 2.1})]
+    )
+    call(client, Trace(query_id="q1"))
+    settings = Settings(anthropic_api_key="sk-test", cache_dir=tmp_path, llm_temperature=0.7)
+    sdk = MagicMock()
+    assert call(LLMClient(settings, client=sdk), Trace(query_id="q2")).city == "Paris"
+    assert sdk.messages.create.call_count == 0
+
+
 def test_cache_disabled_always_calls_api(tmp_path: Path) -> None:
     response = fake_response({"city": "Paris", "population_millions": 2.1})
     client, sdk = make_client(tmp_path, [response, response], cache=False)
@@ -162,6 +246,21 @@ def test_non_retryable_api_error_propagates_immediately(tmp_path: Path) -> None:
     with pytest.raises(anthropic.BadRequestError):
         call(client, Trace(query_id="q1"))
     assert sdk.messages.create.call_count == 1
+
+
+def test_temperature_sent_to_models_that_accept_it(tmp_path: Path) -> None:
+    client, sdk = make_client(
+        tmp_path, [fake_response({"city": "Paris", "population_millions": 2.1})]
+    )
+    trace = Trace(query_id="q1")
+    client.complete_structured(HAIKU, "Be terse.", "Capital?", Capital, trace, "policy")
+    assert sdk.messages.create.call_args.kwargs["extra_body"] == {"temperature": 0.0}
+    assert trace.events[0].detail["temperature"] == 0.0
+
+
+def test_effective_temperature() -> None:
+    assert effective_temperature("claude-sonnet-5", 0.0) is None
+    assert effective_temperature(HAIKU, 0.3) == 0.3
 
 
 def test_unknown_model_price_fails_loudly() -> None:

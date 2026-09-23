@@ -66,19 +66,41 @@ accident. `.env.example`, `.gitignore` (`.env`, `data/processed/`, `.cache/`,
   one corrective retry with the validation error appended, then
   `StructuredOutputError`. `tenacity` exponential backoff on `RateLimitError` /
   `OverloadedError` only (SDK's own retries disabled). `diskcache` keyed on
-  sha256 of (model, system, user, schema); hits record 0 tokens/cost and
-  `cached=True`. Cost from the config price table; unknown model raises
+  sha256 of (format version, model, system, user, schema, effective
+  temperature, max_tokens). Cache entries store the result **and** the original
+  call's input/output tokens, cost, and duration; a hit records 0 tokens/cost,
+  `cached=True`, and `original_input_tokens`, `original_output_tokens`,
+  `original_cost_usd`, `original_duration_ms` in `detail` (M6 reports these).
+  `llm_temperature` is sent (via `extra_body`) only to models that accept it;
+  see DECISIONS.md. Cost from the config price table; unknown model raises
   `UnknownModelPriceError`.
 - `prompts/__init__.py`: `load_prompt(name)` reads `prompts/{name}.md`, error
   lists available prompts.
-- `config.py`: added `enable_llm_cache`, `llm_max_tokens`, `llm_retry_attempts`.
+- `config.py`: `PROJECT_ROOT = Path(__file__).resolve().parents[2]`; all path
+  fields and `env_file` absolute under it (relative overrides resolve against
+  it, not cwd). Field constraints: top_k / top_n / rrf_k / max_tokens > 0,
+  `verifier_max_drop_ratio` and `llm_temperature` in [0, 1], retry attempts
+  >= 1, chunk sizes positive. Model validator: `chunk_overlap_tokens <
+  chunk_target_tokens`. New fields: `enable_llm_cache`, `llm_temperature`
+  (0.0), `llm_max_tokens` (2048), `llm_retry_attempts` (5). New constant
+  `MODELS_WITHOUT_TEMPERATURE`. Sonnet 5 price corrected to $2/$10 (was $3/$15).
 
 **Test results:**
 - `make check` → ruff check: all checks passed; ruff format --check: 23 files
-  already formatted; pytest (unit): 20 passed, 1 deselected.
-- `make test-int` → 1 passed. Real `claude-sonnet-5` call returned
-  `answer=42`, 624 input / 33 output tokens, $0.002367, ~1.15s.
+  already formatted; pytest (unit): 50 passed, 3 deselected. Includes: Settings
+  loaded from a different cwd (paths absolute under PROJECT_ROOT, decoy cwd
+  `.env` ignored), constraint and overlap-validator tests, cache-hit originals,
+  temperature/max_tokens in cache key.
+- `make test-int` → 3 passed:
+  - tiny schema on `claude-sonnet-5`: `answer=42`, nonzero tokens and cost.
+  - nested `$defs`/`$ref` schema (`list[CitedSentence]`) on `claude-sonnet-5`:
+    accepted by the API, validated on the first attempt. Sample output:
+    two sentences citing `acme-p7-0` and `acme-p9-1`; 890 in / 106 out
+    tokens, $0.00284.
+  - `claude-haiku-4-5-20251001` with `temperature=0.0` sent: accepted.
 
-**Deferred:** Nothing.
+**Deferred:** Nothing. Requirement "pass temperature on every call" was changed
+with Jasmeet's approval to "pass it to every model that accepts it"
+(Sonnet 5 returns 400); see DECISIONS.md.
 
 **Non-obvious decisions:** see DECISIONS.md (M1 entries).
