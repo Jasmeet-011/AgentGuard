@@ -22,6 +22,7 @@ def make_chunk() -> Chunk:
         doc_id="acme",
         doc_type="part2a",
         adv_item=5,
+        is_toc=False,
         item_title="Fees and Compensation",
         page_start=7,
         page_end=8,

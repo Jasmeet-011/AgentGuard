@@ -52,3 +52,13 @@ def test_gibbs_glyphs_repaired(corpus: tuple[list[Chunk], list[DocSummary]]) -> 
     gibbs = " ".join(c.text for c in chunks if c.doc_id == "gibbs-wealth")
     assert "information" in gibbs and "Alpharetta" in gibbs
     assert not any(chr(cp) in gibbs for cp in (0x19F, 0x19E, 0x1A9, 0x1AF, 0x14C, 0xF0B7))
+
+
+def test_each_firm_has_toc_chunks_and_only_toc_is_flagged(
+    corpus: tuple[list[Chunk], list[DocSummary]],
+) -> None:
+    chunks, summaries = corpus
+    toc = [c for c in chunks if c.is_toc]
+    assert {c.doc_id for c in toc} == {s.doc_id for s in summaries}
+    assert all(c.adv_item == 3 for c in toc)
+    assert not any(c.is_toc and "Fees and Compensation We" in c.text for c in chunks)

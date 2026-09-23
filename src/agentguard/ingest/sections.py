@@ -31,6 +31,7 @@ class Section(BaseModel):
     doc_type: DocType
     adv_item: int | None
     paragraphs: list[Paragraph]
+    is_toc: bool = False  # started by a table-of-contents page (labeled Item 3)
 
 
 class _Candidate(BaseModel):
@@ -38,6 +39,7 @@ class _Candidate(BaseModel):
     line_index: int  # index into the page's flattened lines
     item: int
     explicit: bool
+    toc: bool = False
 
 
 def _lines(page: Page) -> list[str]:
@@ -88,7 +90,13 @@ def find_candidates(pages: list[Page], doc_type: DocType) -> list[_Candidate]:
         toc = is_toc_page(_lines(page), doc_type)
         if toc and not previous_was_toc:
             candidates.append(
-                _Candidate(page_number=page.page_number, line_index=0, item=TOC_ITEM, explicit=True)
+                _Candidate(
+                    page_number=page.page_number,
+                    line_index=0,
+                    item=TOC_ITEM,
+                    explicit=True,
+                    toc=True,
+                )
             )
         elif not toc:
             candidates.extend(_page_candidates(page, doc_type))
@@ -123,7 +131,7 @@ def select_boundaries(candidates: list[_Candidate]) -> list[_Candidate]:
 
 def _split_segment(pages: list[Page], doc_type: DocType) -> list[Section]:
     starts = {
-        (c.page_number, c.line_index): c.item
+        (c.page_number, c.line_index): c
         for c in select_boundaries(find_candidates(pages, doc_type))
     }
     sections = [Section(doc_type=doc_type, adv_item=None, paragraphs=[])]
@@ -132,10 +140,17 @@ def _split_segment(pages: list[Page], doc_type: DocType) -> list[Section]:
         for paragraph in page.paragraphs:
             current: list[str] = []
             for line in paragraph:
-                item = starts.get((page.page_number, line_index))
-                if item is not None:
+                start = starts.get((page.page_number, line_index))
+                if start is not None:
                     _flush(sections[-1], page.page_number, current)
-                    sections.append(Section(doc_type=doc_type, adv_item=item, paragraphs=[]))
+                    sections.append(
+                        Section(
+                            doc_type=doc_type,
+                            adv_item=start.item,
+                            paragraphs=[],
+                            is_toc=start.toc,
+                        )
+                    )
                     current = []
                 current.append(line)
                 line_index += 1

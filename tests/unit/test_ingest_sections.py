@@ -99,6 +99,15 @@ def test_toc_page_listing_part2b_does_not_start_part2b() -> None:
     assert assign_doc_types(pages, firm()) == ["part2a", "part2a"]
     sections = split_sections(pages, firm())
     assert [s.adv_item for s in sections] == [3, 4]  # the TOC page itself is Item 3
+    assert [s.is_toc for s in sections] == [True, False]
+
+
+def test_explicit_item_3_heading_on_a_content_page_is_not_toc() -> None:
+    pages = [page(1, ["Item 3 - Table of Contents", "See below."], ["Item 4 Advisory Business"])]
+    assert [(s.adv_item, s.is_toc) for s in split_sections(pages, firm())] == [
+        (3, False),
+        (4, False),
+    ]
 
 
 TITLES = [

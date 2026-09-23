@@ -126,6 +126,14 @@ def test_small_section_is_one_chunk() -> None:
         "Acme only manages accounts non-discretionarily."
     )
     assert (chunk.page_start, chunk.page_end, chunk.adv_item) == (9, 9, 16)
+    assert chunk.is_toc is False
+
+
+def test_toc_section_flag_carries_to_every_chunk() -> None:
+    section = random_section(4).model_copy(update={"adv_item": 3, "is_toc": True})
+    chunks = chunk_sections([section], ACME, TARGET, OVERLAP)
+    assert len(chunks) > 1
+    assert all(c.is_toc for c in chunks)
 
 
 def test_chunk_ids_are_unique_and_stable_across_runs() -> None:

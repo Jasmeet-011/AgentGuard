@@ -113,7 +113,7 @@ with Jasmeet's approval to "pass it to every model that accepts it"
 - Data prep (separate commit): the 10 brochures renamed to the approved slugs
   and committed (5.9 MB); `data/raw/firms.json` with name, lowercase aliases,
   doc_type, and Betterment's `wrap_appendix1_from_page: 35`.
-- `models.py`: `DocType`, `FirmInfo`, `Page`; `Chunk.doc_type`.
+- `models.py`: `DocType`, `FirmInfo`, `Page`; `Chunk.doc_type`, `Chunk.is_toc`.
 - `ingest/parse.py`: `parse_pdf(path) -> list[Page]`. Same-row merging,
   paragraph breaks relative to the page's median line gap, header/footer
   stripping, NFKC and invisible-character cleanup, and the Gibbs glyph map
@@ -132,7 +132,7 @@ with Jasmeet's approval to "pass it to every model that accepts it"
   table and exits 1 if any brochure is below its minimum). `make ingest` wired.
 
 **Test results:**
-- `make check` → ruff check and format clean; pytest (unit): 125 passed,
+- `make check` → ruff check and format clean; pytest (unit): 128 passed,
   3 deselected. New tests: 15 real "Item N" header variants plus 5 prose or
   wrong-title negatives; 8 real Fisher/Vanguard title-only headings plus 3
   body-text negatives; wrap appendix titles; real Atwood and Vanguard TOC pages
@@ -157,8 +157,14 @@ with Jasmeet's approval to "pass it to every model that accepts it"
 **Deferred:** Nothing.
 
 **Non-obvious decisions:** see DECISIONS.md (M2 entries). Plan deviations:
-doc_type on Chunk and per-doc_type acceptance thresholds (approved), plus a
-`part2b` doc_type for brochure supplements (mine; flagged for review).
+doc_type on Chunk and per-doc_type acceptance thresholds, a `part2b` doc_type
+for brochure supplements, and `Chunk.is_toc` (all approved by Jasmeet).
+
+**Closing review (after Jasmeet's M2 decisions):** added `is_toc` (13 TOC
+chunks, at least one per firm, all Item 3) with tests at the section, chunk,
+and corpus level. File sizes in `src/agentguard/ingest/`: chunk.py 185,
+firms.py 31, items.py 166, parse.py 149, pipeline.py 103, sections.py 189
+(limit ~250). Longest function: `chunk_sections` at 34 lines (limit ~50).
 
 ---
 
@@ -166,7 +172,8 @@ doc_type on Chunk and per-doc_type acceptance thresholds (approved), plus a
 
 - **M3 firm filter:** match `firms.json` aliases on word boundaries, never raw
   substring matching. "savvy" and "fisher" are also ordinary English words.
-- **M3 retrieval:** TOC pages are chunked as Item 3 and list every item title,
-  so they can match almost any keyword query. Watch for them in BM25 results.
-- **M3/M4:** `part2b` chunks (adviser bios, individual disciplinary history)
-  have `adv_item=None`. Decide whether retrieval should include them.
+- **M3 indexes:** exclude `is_toc` chunks from both Qdrant and BM25, and log
+  how many were excluded per firm (expected: 13 total, 1 per firm, 2 for
+  Betterment). Decided by Jasmeet after M2.
+- **M3:** `part2b` chunks stay indexed (doc_type="part2b", `adv_item=None`).
+  Decided by Jasmeet after M2.

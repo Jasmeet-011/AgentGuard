@@ -170,6 +170,7 @@ def chunk_sections(
                     doc_id=firm.slug,
                     doc_type=section.doc_type,
                     adv_item=section.adv_item,
+                    is_toc=section.is_toc,
                     item_title=(
                         ITEM_TITLES[section.doc_type][section.adv_item]
                         if section.adv_item is not None

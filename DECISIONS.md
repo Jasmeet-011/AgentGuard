@@ -120,7 +120,8 @@ Wealthfront) end with Part 2B brochure supplements whose own Items 1-7 (e.g.
 
 - Approved by Jasmeet: `Chunk.doc_type`, item titles matched per doc_type, and
   the acceptance check "part2a >= 12 of 18 items, wrap_appendix1 >= 7 of 9".
-- My addition, flagged for review: a third value, `part2b`. Supplement pages
+- A third value, `part2b` (proposed by me, approved by Jasmeet after M2
+  review): Part 2B text stays indexed with doc_type="part2b". Supplement pages
   start at the first non-TOC page with a standalone "Form ADV Part 2B" /
   "Part 2B of Form ADV" line. They are chunked with `adv_item=None` rather
   than dropped, since adviser bios and individual disciplinary history can
@@ -148,6 +149,13 @@ Wealthfront) end with Part 2B brochure supplements whose own Items 1-7 (e.g.
 - TOC pages (>= 8 heading lines, or >= 3 heading lines ending in dot leaders
   plus a page number) are excluded from boundary detection. The first page of
   a TOC run is labeled Item 3 (Table of Contents), which is what it is.
+- `Chunk.is_toc` (Jasmeet's decision): True for every chunk of a section that
+  a TOC page started. TOC text names every item title, so it would match
+  almost any keyword query; M3 excludes is_toc chunks from both the Qdrant and
+  BM25 indexes and logs the count excluded per firm. They stay in
+  chunks.jsonl. Current corpus: 13 TOC chunks, at least one per firm
+  (Betterment has two TOCs, one per brochure). An explicit "Item 3" heading on
+  a non-TOC page is not flagged.
 - `item_title` is the canonical SEC title, not the brochure's wording (Facet's
   "Types of Members" is stored as "Types of Clients"), so titles are uniform
   across firms.

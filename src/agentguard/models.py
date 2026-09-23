@@ -36,6 +36,8 @@ class Chunk(BaseModel):
     doc_id: str
     doc_type: DocType
     adv_item: int | None
+    # True for table-of-contents text: it names every item, so M3 keeps it out of the indexes.
+    is_toc: bool
     item_title: str | None
     page_start: int
     page_end: int
