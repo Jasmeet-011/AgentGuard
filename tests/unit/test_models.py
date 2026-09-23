@@ -20,6 +20,7 @@ def make_chunk() -> Chunk:
         chunk_id="acme-p7-0",
         firm_name="Acme Advisors",
         doc_id="acme",
+        doc_type="part2a",
         adv_item=5,
         item_title="Fees and Compensation",
         page_start=7,

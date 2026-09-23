@@ -5,6 +5,28 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, computed_field
 
+# Which brochure a page belongs to. A PDF can hold several: Betterment's has a Part 2A,
+# a wrap fee program brochure (Part 2A Appendix 1), and Part 2B supplements.
+DocType = Literal["part2a", "wrap_appendix1", "part2b"]
+
+
+class FirmInfo(BaseModel):
+    """One firm's entry in `data/raw/firms.json`, keyed by the PDF's filename slug."""
+
+    slug: str
+    name: str
+    aliases: list[str]
+    doc_type: Literal["part2a", "wrap_appendix1"]
+    wrap_appendix1_from_page: int | None = None
+
+
+class Page(BaseModel):
+    """One cleaned PDF page: paragraphs of lines, headers/footers and bad glyphs removed."""
+
+    doc_id: str
+    page_number: int
+    paragraphs: list[list[str]]
+
 
 class Chunk(BaseModel):
     """A retrievable slice of one ADV brochure, labeled with its ADV item."""
@@ -12,6 +34,7 @@ class Chunk(BaseModel):
     chunk_id: str
     firm_name: str
     doc_id: str
+    doc_type: DocType
     adv_item: int | None
     item_title: str | None
     page_start: int

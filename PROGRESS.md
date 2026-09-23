@@ -4,7 +4,7 @@
 |---|---|
 | M0. Repo skeleton and tooling | DONE |
 | M1. Data contracts, LLM wrapper, tracing | DONE |
-| M2. Ingestion: parse and chunk | TODO |
+| M2. Ingestion: parse and chunk | DONE |
 | M3. Retrieval: dense, sparse, fusion, rerank | TODO |
 | M4. Generator and baseline pipeline | TODO |
 | M5. Golden dataset | TODO |
@@ -107,7 +107,66 @@ with Jasmeet's approval to "pass it to every model that accepts it"
 
 ---
 
+## M2 details
+
+**What was built:**
+- Data prep (separate commit): the 10 brochures renamed to the approved slugs
+  and committed (5.9 MB); `data/raw/firms.json` with name, lowercase aliases,
+  doc_type, and Betterment's `wrap_appendix1_from_page: 35`.
+- `models.py`: `DocType`, `FirmInfo`, `Page`; `Chunk.doc_type`.
+- `ingest/parse.py`: `parse_pdf(path) -> list[Page]`. Same-row merging,
+  paragraph breaks relative to the page's median line gap, header/footer
+  stripping, NFKC and invisible-character cleanup, and the Gibbs glyph map
+  with a per-document replacement count logged.
+- `ingest/items.py`: canonical titles for part2a (1-19) and wrap_appendix1
+  (1-9); `match_item_heading`, `match_title_heading`, `is_toc_page`,
+  `is_part2b_cover`.
+- `ingest/sections.py`: per-page doc_type (Part 2A / wrap appendix / Part 2B),
+  heading candidates, longest increasing item sequence as boundaries, TOC run
+  labeled Item 3, Part 2B kept unlabeled.
+- `ingest/chunk.py`: sentence units, greedy packing near
+  `chunk_target_tokens` with paragraph-preferred breaks, overlap, header line,
+  stable chunk ids.
+- `ingest/firms.py`, `ingest/pipeline.py` (`ingest_corpus`, `write_chunks`,
+  per-doc item coverage), `cli.py` (`agentguard ingest` prints the summary
+  table and exits 1 if any brochure is below its minimum). `make ingest` wired.
+
+**Test results:**
+- `make check` → ruff check and format clean; pytest (unit): 125 passed,
+  3 deselected. New tests: 15 real "Item N" header variants plus 5 prose or
+  wrong-title negatives; 8 real Fisher/Vanguard title-only headings plus 3
+  body-text negatives; wrap appendix titles; real Atwood and Vanguard TOC pages
+  detected, while Atwood p15 (5 real headings) is not; Part 2B cover vs prose;
+  glyph map, NFKC, invisible characters; paragraph gaps; header/footer strip;
+  chunk sizes within ±30% of target (5 seeds, on unit sums and rendered
+  bodies); overlap, including the word-tail fallback; paragraph-preferred
+  breaks; chunk_ids unique and stable; a real-corpus regression test (coverage
+  minimums, ids and text identical across two runs, known facts in the right
+  item, no Gibbs glyphs left).
+- `agentguard ingest` → 745 chunks. Items detected: Atwood 18/18, Betterment
+  part2a 18/18 and wrap_appendix1 8/9, Creative 16/18, Edelman 17/18, Facet
+  18/18, Fisher 17/18, Gibbs 17/18, Savvy 18/18, Vanguard 16/18, Wealthfront
+  18/18. All OK.
+- Every miss is an item the brochure never labels: Item 1 (no "Item 1"
+  heading) for Creative, Edelman, Fisher, Gibbs, Vanguard, and Betterment's
+  appendix; Item 2 for Creative (a plain "Material Changes" heading in a doc
+  that otherwise uses "Item N") and Vanguard (no heading at all). That text is
+  kept with `adv_item=None`.
+- 3 random chunks and 1 Fisher Item 5 chunk printed for review.
+
+**Deferred:** Nothing.
+
+**Non-obvious decisions:** see DECISIONS.md (M2 entries). Plan deviations:
+doc_type on Chunk and per-doc_type acceptance thresholds (approved), plus a
+`part2b` doc_type for brochure supplements (mine; flagged for review).
+
+---
+
 ## Notes for later milestones
 
 - **M3 firm filter:** match `firms.json` aliases on word boundaries, never raw
   substring matching. "savvy" and "fisher" are also ordinary English words.
+- **M3 retrieval:** TOC pages are chunked as Item 3 and list every item title,
+  so they can match almost any keyword query. Watch for them in BM25 results.
+- **M3/M4:** `part2b` chunks (adviser bios, individual disciplinary history)
+  have `adv_item=None`. Decide whether retrieval should include them.

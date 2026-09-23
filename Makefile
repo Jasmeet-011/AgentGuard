@@ -16,7 +16,7 @@ test-int:
 check: lint test
 
 ingest:
-	@echo "agentguard ingest is not implemented until M2" && exit 1
+	uv run agentguard ingest
 
 eval:
 	@echo "agentguard eval is not implemented until M6" && exit 1
