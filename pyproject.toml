@@ -1,0 +1,44 @@
+[project]
+name = "agentguard"
+version = "0.1.0"
+description = "Verified research assistant for financial advisors over SEC Form ADV Part 2A brochures."
+authors = [
+    { name = "Jasmeet-011", email = "jasmeetsingh5003@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=1.8.0",
+    "diskcache>=5.6.3",
+    "langgraph>=1.2.12",
+    "mcp>=2.2.0",
+    "pydantic>=2",
+    "pydantic-settings>=2.15.0",
+    "pymupdf>=1.28.2",
+    "qdrant-client>=1.19.1",
+    "rank-bm25>=0.2.2",
+    "sentence-transformers>=6.1.0",
+    "streamlit>=1.64.0",
+    "tenacity>=9.1.4",
+    "typer>=0.27.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.1,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.16.8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that call real external APIs (excluded from `make test`)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src"]
