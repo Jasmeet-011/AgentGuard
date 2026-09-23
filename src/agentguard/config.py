@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     judge_model: str = "claude-sonnet-5"
     policy_model: str = "claude-haiku-4-5-20251001"
 
+    enable_llm_cache: bool = True
+    llm_max_tokens: int = 2048
+    llm_retry_attempts: int = 5
+
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     reranker_model: str = "BAAI/bge-reranker-base"
 

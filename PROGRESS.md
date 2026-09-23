@@ -3,7 +3,7 @@
 | Milestone | Status |
 |---|---|
 | M0. Repo skeleton and tooling | DONE |
-| M1. Data contracts, LLM wrapper, tracing | TODO |
+| M1. Data contracts, LLM wrapper, tracing | DONE |
 | M2. Ingestion: parse and chunk | TODO |
 | M3. Retrieval: dense, sparse, fusion, rerank | TODO |
 | M4. Generator and baseline pipeline | TODO |
@@ -48,3 +48,37 @@ accident. `.env.example`, `.gitignore` (`.env`, `data/processed/`, `.cache/`,
 **Non-obvious decision:** `make` wasn't installed on the dev machine and
 `choco install make` failed for lack of admin rights; installed via
 `winget install --scope user ezwinports.make` instead. See DECISIONS.md.
+
+---
+
+## M1 details
+
+**What was built:**
+- `models.py`: the 8 contracts exactly as specified (`Chunk`, `RetrievedChunk`,
+  `CitedSentence`, `VerificationResult`, `PolicyDecision`, `Answer`,
+  `TraceEvent`, `Trace`). `Trace` has computed `total_ms`, `total_cost_usd`,
+  `total_tokens`. `TraceEvent.started_at` is a `datetime`.
+- `trace.py`: `trace_node(trace, name)` context manager. Yields a mutable
+  `TraceEvent`, records wall-clock duration, appends the event even if the node
+  raises.
+- `llm.py`: `LLMClient.complete_structured(model, system, user, output_model,
+  trace, node_name)`. Single tool forced via `tool_choice`; pydantic validation;
+  one corrective retry with the validation error appended, then
+  `StructuredOutputError`. `tenacity` exponential backoff on `RateLimitError` /
+  `OverloadedError` only (SDK's own retries disabled). `diskcache` keyed on
+  sha256 of (model, system, user, schema); hits record 0 tokens/cost and
+  `cached=True`. Cost from the config price table; unknown model raises
+  `UnknownModelPriceError`.
+- `prompts/__init__.py`: `load_prompt(name)` reads `prompts/{name}.md`, error
+  lists available prompts.
+- `config.py`: added `enable_llm_cache`, `llm_max_tokens`, `llm_retry_attempts`.
+
+**Test results:**
+- `make check` → ruff check: all checks passed; ruff format --check: 23 files
+  already formatted; pytest (unit): 20 passed, 1 deselected.
+- `make test-int` → 1 passed. Real `claude-sonnet-5` call returned
+  `answer=42`, 624 input / 33 output tokens, $0.002367, ~1.15s.
+
+**Deferred:** Nothing.
+
+**Non-obvious decisions:** see DECISIONS.md (M1 entries).
