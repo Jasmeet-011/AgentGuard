@@ -1,0 +1,12 @@
+{
+  "savvy": {"name": "Savvy Advisors", "aliases": ["savvy", "savvy advisors", "savvy advisors, inc.", "savvy wealth"], "doc_type": "part2a"},
+  "facet": {"name": "Facet Wealth", "aliases": ["facet", "facet wealth", "facet wealth, inc."], "doc_type": "part2a"},
+  "betterment": {"name": "Betterment", "aliases": ["betterment", "betterment llc"], "doc_type": "part2a", "wrap_appendix1_from_page": 35},
+  "wealthfront": {"name": "Wealthfront", "aliases": ["wealthfront", "wealthfront advisers", "wealthfront advisers llc"], "doc_type": "part2a"},
+  "creative-planning": {"name": "Creative Planning", "aliases": ["creative planning", "creative planning, llc"], "doc_type": "part2a"},
+  "fisher-investments": {"name": "Fisher Investments", "aliases": ["fisher", "fisher investments", "fisher asset management", "fisher asset management, llc"], "doc_type": "part2a"},
+  "edelman-financial-engines": {"name": "Edelman Financial Engines", "aliases": ["edelman", "edelman financial engines", "edelman financial engines, llc", "financial engines", "financial engines advisors", "financial engines advisors l.l.c."], "doc_type": "part2a"},
+  "vanguard-personal-advisor": {"name": "Vanguard Personal Advisor", "aliases": ["vanguard", "vanguard advisers", "vanguard advisers, inc.", "vanguard personal advisor", "vanguard personal advisor select"], "doc_type": "part2a"},
+  "atwood-financial-planning": {"name": "Atwood Financial Planning", "aliases": ["atwood", "atwood financial planning", "atwood financial planning, llc", "fearless finance"], "doc_type": "part2a"},
+  "gibbs-wealth": {"name": "Gibbs Wealth Management", "aliases": ["gibbs", "gibbs wealth", "gibbs wealth management", "gibbs wealth management, llc"], "doc_type": "part2a"}
+}

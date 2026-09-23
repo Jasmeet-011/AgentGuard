@@ -88,3 +88,24 @@ Consequence: generator, verifier, and judge (all Sonnet 5) run at the model's
 default sampling and cannot be pinned. Eval reproducibility comes from the
 diskcache, not from temperature. A fresh uncached rerun may differ slightly;
 report that if it happens.
+
+## M2 prep: Brochure files, firms.json, and Betterment's two-part PDF
+
+The 10 brochures were downloaded under their SEC numeric IDs and renamed to
+Jasmeet-approved slugs (`data/raw/{slug}.pdf`). They are committed to the repo
+(5.9 MB total, public SEC filings) so a fresh clone runs end to end.
+
+`data/raw/firms.json` extends the PLAN's `{"slug": "Display Name"}` format to
+`{"slug": {"name", "aliases", "doc_type"}}`. Aliases are lowercase (short name,
+legal name, d/b/a) for M3's firm filter. Short abbreviations ("vai", "fea",
+"efe") are deliberately left out because they collide with ordinary tokens.
+
+`betterment.pdf` is two brochures in one file: a standard Part 2A (Items 1-18,
+pages 1-34) followed by its Wrap Fee Program Brochure (Form ADV Part 2A
+Appendix 1, Items 1-9, pages 35-83). Item numbers mean different things in
+each half (Item 5 is "Fees and Compensation" vs. "Account Requirements and
+Types of Clients"), so doc_type must be per chunk, not per firm. Decision
+(approved by Jasmeet): Betterment's firms.json entry carries
+`"wrap_appendix1_from_page": 35`; pages from 35 on are parsed as
+`wrap_appendix1`. The PDF is not split, so citations keep the real SEC page
+numbers and one slug stays one firm.

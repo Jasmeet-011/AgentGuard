@@ -104,3 +104,10 @@ with Jasmeet's approval to "pass it to every model that accepts it"
 (Sonnet 5 returns 400); see DECISIONS.md.
 
 **Non-obvious decisions:** see DECISIONS.md (M1 entries).
+
+---
+
+## Notes for later milestones
+
+- **M3 firm filter:** match `firms.json` aliases on word boundaries, never raw
+  substring matching. "savvy" and "fisher" are also ordinary English words.
