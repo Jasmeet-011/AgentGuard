@@ -148,7 +148,7 @@ def test_run_variant_scores_a_question_and_marks_the_run_preliminary() -> None:
     # One untimed warm-up query, then the one verified question; the warm-up is not a row.
     assert pipeline.questions_run == ["Fee?", "Fee?"]
     assert len(run.rows) == 1
-    assert run.preliminary  # 1 verified < 28
+    assert run.preliminary  # 1 verified < 20
     assert (run.verified_in_file, run.unverified_skipped) == (1, 1)
     assert [r.id for r in run.rows] == ["q0"]  # the unverified entry was not run
     row = run.rows[0]

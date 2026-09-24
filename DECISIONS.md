@@ -586,3 +586,14 @@ question only; the effect on correctness elsewhere is not measured yet.
   "helps faithfulness" partly grades itself with a similar model. Report faithfulness gains
   with that caveat; the human-checked subset is the real ground truth.
 - **Cost/latency:** one extra call per answered question (about 2.3 s, $0.0075 on q006).
+
+## M5: The golden set is 20 entries, not 30 (Jasmeet's decision)
+
+PLAN.md's M5 called for 30 questions (20 answerable, 6 unanswerable, 4 policy; 20 dev / 10
+test) with at least 28 verified. Jasmeet built and verified 20 (11 answerable, 5 unanswerable,
+4 policy; 14 dev / 6 test) because of time. `eval_min_verified_for_final` was lowered from 28
+to 20 so a run over the complete set is no longer labeled preliminary. Consequences to state
+when presenting numbers: rates over the test split rest on 6 questions (3 answerable, 2
+unanswerable, 1 policy), so a single question moves a rate by 33 to 100 points; the dev set
+used for tuning is also small (14). Differences between variants should be read as
+directional, not statistically established.

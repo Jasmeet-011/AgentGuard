@@ -7,7 +7,7 @@
 | M2. Ingestion: parse and chunk | DONE |
 | M3. Retrieval: dense, sparse, fusion, rerank | DONE |
 | M4. Generator and baseline pipeline | DONE |
-| M5. Golden dataset | IN PROGRESS (code done; dataset is being built by Jasmeet) |
+| M5. Golden dataset | DONE (20 entries, not the planned 30) |
 | M6. Eval harness and baseline numbers | IN PROGRESS (harness done; numbers preliminary; judge spot-check pending) |
 | M7. Verifier agent | IN PROGRESS (code and tests done; eval waits for the full golden set) |
 | M8. Policy guard | TODO |
@@ -390,8 +390,15 @@ the committed file, 10 invalid-entry cases, an empty unanswerable/policy pair, d
 ids with unknown slugs reported together, invalid JSON line numbers, a missing file, and
 verified-only selection.
 
-**Still needed from Jasmeet:** the full dataset (30 entries, at least 28 verified) before
-M5 can be marked DONE.
+**Dataset delivered (commit 6541b9f):** 20 entries, all verified by Jasmeet: dev 14 (8
+answerable, 3 unanswerable, 3 policy), test 6 (3 answerable, 2 unanswerable, 1 policy).
+PLAN.md planned 30 entries (20/6/4) with at least 28 verified; the set is 20 because of
+time (DECISIONS.md). Consequences: every type is in both splits, but the test split has only
+6 questions, so test-split differences will be coarse (one question = 17 points on rates
+over 6, 33 over 3 answerable). `eval_min_verified_for_final` is now 20, so runs stop being
+labeled preliminary once all 20 entries are verified. **M5 acceptance:** loader validates
+with zero errors; type x split table printed by `agentguard golden`; the "at least 28
+verified" check is superseded by the 20-entry decision.
 
 ---
 
