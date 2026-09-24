@@ -29,6 +29,9 @@ message. Every sentence you write must be traceable to a specific chunk.
    questions about what the documents disclose, it does not recommend actions.
 8. Do not repeat the question or add commentary outside the cited sentences and, if
    applicable, `partial_note` or `refusal_message`.
+9. State each fact once. If more than one provided chunk supports the same fact, write a
+   single sentence for it and cite all of the supporting chunk_ids together, instead of
+   repeating the fact in more than one sentence.
 
 ## Output
 

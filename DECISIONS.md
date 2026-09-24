@@ -433,6 +433,31 @@ new `src/agentguard/pipeline.py`:
   Savvy's minimum account size?" got cached from earlier manual `ask` runs,
   the same reason `test_llm_integration.py` already disables the cache.
 
+## M4 fix: state each fact once, cached trace values, singular page formatting
+
+Three small fixes, all Jasmeet's instruction:
+
+- `generator_system.md` rule 9: if more than one provided chunk supports the same
+  fact, write one sentence citing all of them, instead of repeating the fact once
+  per supporting chunk. Confirmed live: the Savvy minimum-account-size answer
+  went from two near-duplicate sentences (`^1` and `^2`) to one sentence citing
+  both (`^1,2`).
+- `cli.py` `_trace_row_values(e)`: for a cached trace event, the displayed
+  ms/in-tokens/out-tokens/cost are the call's `original_*` detail values (what it
+  would have cost live), not the cache lookup's near-zero actuals; the `cached`
+  column still marks which rows these are. The totals line now reports both
+  `total_cost_usd` ("actual spend") and the sum of each row's displayed cost
+  ("if uncached") side by side, since they diverge exactly when the run had any
+  cache hits.
+- `cli.py` `_page_range(start, end)`: `"page 13"` when `start == end`, else
+  `"pages 13-14"`. Used by `_footnote_line`; not applied to `search`'s results
+  table or the generator's context block (`Pages: 7-7`), which is a different,
+  labeled-field display style, not the natural-language phrase this rule
+  describes.
+- New `tests/unit/test_cli.py`: `_page_range` (equal vs. different), and
+  `_trace_row_values` for not-cached, cached-with-originals, and
+  cached-with-missing-originals (falls back to actuals).
+
 ## M4: Context block sent to the generator
 
 Jasmeet's M4 instruction: show chunk_id, firm name, doc_type, item number and

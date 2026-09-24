@@ -11,7 +11,7 @@ from rich.table import Table
 from agentguard.config import Settings
 from agentguard.ingest.index import IndexSummary, build_indexes
 from agentguard.ingest.pipeline import DocSummary, ingest_corpus, write_chunks
-from agentguard.models import Answer, Chunk, RetrievedChunk, Trace
+from agentguard.models import Answer, Chunk, RetrievedChunk, Trace, TraceEvent
 from agentguard.pipeline import run_pipeline
 from agentguard.retrieval.retriever import RetrievalMode, Retriever
 
@@ -109,12 +109,14 @@ def search(
     console.print(f"retrieve: {event.duration_ms:.0f} ms  stages: {event.detail['stage_ms']}")
 
 
+def _page_range(start: int, end: int) -> str:
+    return f"page {start}" if start == end else f"pages {start}-{end}"
+
+
 def _footnote_line(n: int, chunk: Chunk) -> str:
     item = "unlabeled" if chunk.adv_item is None else f"Item {chunk.adv_item} ({chunk.item_title})"
-    return (
-        f"[{n}] {chunk.firm_name} | {chunk.doc_type} | {item} | "
-        f"pages {chunk.page_start}-{chunk.page_end} | {chunk.chunk_id}"
-    )
+    pages = _page_range(chunk.page_start, chunk.page_end)
+    return f"[{n}] {chunk.firm_name} | {chunk.doc_type} | {item} | {pages} | {chunk.chunk_id}"
 
 
 def _print_answer(answer: Answer) -> None:
@@ -137,22 +139,38 @@ def _print_answer(answer: Answer) -> None:
             console.print(_footnote_line(n, chunks_by_id[chunk_id]))
 
 
+def _trace_row_values(e: TraceEvent) -> tuple[float, int, int, float]:
+    """(ms, in tokens, out tokens, cost) to display: a cache hit shows the original call's."""
+    if not e.detail.get("cached"):
+        return e.duration_ms, e.input_tokens, e.output_tokens, e.cost_usd
+    return (
+        e.detail.get("original_duration_ms", e.duration_ms),
+        e.detail.get("original_input_tokens", e.input_tokens),
+        e.detail.get("original_output_tokens", e.output_tokens),
+        e.detail.get("original_cost_usd", e.cost_usd),
+    )
+
+
 def _print_trace(trace: Trace) -> None:
     table = Table(title="Trace")
     for column in ("node", "ms", "in tok", "out tok", "cost", "cached"):
         table.add_column(column)
+    original_cost_usd = 0.0
     for e in trace.events:
+        ms, in_tok, out_tok, cost = _trace_row_values(e)
+        original_cost_usd += cost
         table.add_row(
             e.node,
-            f"{e.duration_ms:.0f}",
-            str(e.input_tokens),
-            str(e.output_tokens),
-            f"${e.cost_usd:.4f}",
+            f"{ms:.0f}",
+            str(in_tok),
+            str(out_tok),
+            f"${cost:.4f}",
             str(e.detail.get("cached", "-")),
         )
     console.print(table)
     console.print(
-        f"total: {trace.total_ms:.0f} ms, {trace.total_tokens} tokens, ${trace.total_cost_usd:.4f}"
+        f"total: {trace.total_ms:.0f} ms, {trace.total_tokens} tokens, "
+        f"${trace.total_cost_usd:.4f} actual spend (${original_cost_usd:.4f} if uncached)"
     )
 
 
