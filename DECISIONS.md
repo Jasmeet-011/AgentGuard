@@ -338,3 +338,53 @@ see "M3: Raw reranker logits") to `min_rerank_score`. It applies only when reran
 ran, which is now the default. `min_rerank_score` is tuned on dev in M9 on the logit
 scale. For reference, top-1 MiniLM logits on the M3 manual queries ranged from 1.60
 (the flat-fee query, which failed) to 9.72 (Gibbs custody).
+
+## M4: `enable_verifier`/`enable_policy_guard`/`enable_score_threshold` default to False
+
+PLAN.md's M0 table lists all three as `True`. Their nodes (verify, policy_guard,
+threshold_check) do not exist until M7-M9. Jasmeet's M4 instruction: default them to
+`False` now, and if one is `True` with no node built, fail loudly with a
+`NotImplementedError` naming the milestone that adds it, rather than silently
+ignoring the flag. `graph.build_graph` checks all three (`UNIMPLEMENTED_NODES` in
+`graph.py`) before adding any node. Each later milestone flips its own default to
+`True` when it lands.
+
+## M4: Baseline refusal reason is always `insufficient_evidence`
+
+`Answer.refusal_reason` is `Literal["policy", "insufficient_evidence",
+"verifier_rejected"]`. The baseline graph (M4) has no policy or verifier node, so
+every generator refusal — whether because no chunk is relevant, or because the
+question asks for personalized advice (prompt rule 7 in `generator_system.md`) —
+is recorded as `insufficient_evidence`. A dedicated `policy` reason arrives with the
+real policy guard in M8; until then this is a known simplification, not a bug.
+
+## M4: `GeneratorOutput.partial_note` and `Answer.partial_note` (new field)
+
+Jasmeet's M4 instruction: if the chunks answer only part of the question, answer
+that part and state plainly what isn't covered, refusing entirely only when nothing
+relevant is present. `CitedSentence.citations` now has `min_length=1` (also
+Jasmeet's instruction), so a sentence cannot carry an uncited "not covered by the
+documents" note. Added `partial_note: str | None` to both `GeneratorOutput`
+(the generator's structured output) and `Answer` (the pipeline's final output) to
+hold that plain statement outside the cited sentences. `models.py`'s own rule is to
+add fields only when a milestone needs them and note it here; this is that note.
+
+## M4: Invalid-citation counts are logged onto the generate trace event
+
+PLAN.md M4: "any citation to an unknown chunk_id is removed and logged as an event
+(this is a metric later, 'invalid citation rate')." Rather than appending a second,
+synthetic trace event, `Generator._drop_invalid_citations` writes
+`invalid_citations_dropped` and `sentences_dropped` into the `detail` dict of the
+`generate` event that `LLMClient.complete_structured` already created (only when
+non-zero). A sentence whose only citations are all invalid is dropped entirely
+(citations were already required to be non-empty by the schema, so a sentence with
+zero valid citations left cannot stand).
+
+## M4: Context block sent to the generator
+
+Jasmeet's M4 instruction: show chunk_id, firm name, doc_type, item number and
+title, and pages, then the text, for every chunk passed to the generator. This is
+built explicitly in `Generator._chunk_context_block` rather than relying on the
+one-line header already embedded in `chunk.text` (from M2), since that header omits
+doc_type, pages, and the chunk_id itself. The full chunk text (including its
+embedded header) still follows.

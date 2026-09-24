@@ -6,7 +6,7 @@
 | M1. Data contracts, LLM wrapper, tracing | DONE |
 | M2. Ingestion: parse and chunk | DONE |
 | M3. Retrieval: dense, sparse, fusion, rerank | DONE |
-| M4. Generator and baseline pipeline | TODO |
+| M4. Generator and baseline pipeline | DONE |
 | M5. Golden dataset | TODO |
 | M6. Eval harness and baseline numbers | TODO |
 | M7. Verifier agent | TODO |
@@ -257,6 +257,79 @@ flat. Not addressed in M3.
 Betterment wrap appendix, and cross-firm questions is left to M6 to measure.
 
 **Non-obvious decisions:** see DECISIONS.md (M3 entries).
+
+---
+
+## M4 details
+
+**What was built:**
+- `models.py`: `CitedSentence.citations` now has `min_length=1` (a sentence must cite
+  something). New `GeneratorOutput` (`sentences`, `refused`, `refusal_message`,
+  `partial_note`) and `Answer.partial_note: str | None = None` (see DECISIONS.md).
+- `prompts/generator_system.md`: answer only from provided chunks; every non-refused
+  sentence cites >=1 provided chunk_id; one firm per sentence, never attribute one
+  firm's facts to another; never drop source qualifiers ("generally", "negotiable",
+  "may be waived"); answer the covered part and set `partial_note` for what isn't,
+  refusing entirely only when nothing relevant is present; no personalized advice
+  (prompt-level guard only, per plan); no outside knowledge.
+- `agents/generator.py`: `Generator(settings, llm)`. `_chunk_context_block` renders
+  chunk_id, firm, doc_type, item number+title, pages, then the chunk text for every
+  retrieved chunk. `generate()` calls the LLM once, then drops citations to
+  chunk_ids that were not retrieved; a sentence left with none is dropped entirely;
+  counts logged onto the `generate` trace event's detail (`invalid_citations_dropped`,
+  `sentences_dropped`), only when non-zero.
+- `graph.py`: `PipelineState` (TypedDict: `question`, `trace`, `retrieved`,
+  `generator_output`, `answer`). `build_graph(settings, retriever, generator)` raises
+  `NotImplementedError` naming the milestone (M7/M8/M9) if `enable_verifier` /
+  `enable_policy_guard` / `enable_score_threshold` is on with no node for it yet;
+  otherwise compiles `retrieve -> generate -> finalize`. `run_pipeline(question,
+  settings)` wires the real `Retriever`, `LLMClient`, `Generator` and returns
+  `(Answer, Trace)`. Baseline refusals (no relevant chunks, or an advice request)
+  are recorded with `refusal_reason="insufficient_evidence"` — no `policy` reason
+  exists until M8 (DECISIONS.md).
+- `config.py`: `enable_policy_guard`, `enable_verifier`, `enable_score_threshold` now
+  default to `False` (PLAN.md's M0 table had `True`); each milestone flips its own on.
+- `cli.py`: `agentguard ask "question"` runs the pipeline and prints sentences with
+  superscript footnote markers, a `partial_note` line if set, a refusal line if
+  refused, a sources list per footnote (firm, doc_type, item, pages, chunk_id), and
+  the trace table (per-node ms/tokens/cost/cached).
+
+**Test results:**
+- `make check` -> ruff check and format clean; pytest (unit): 188 passed, 6
+  deselected. New tests: `CitedSentence` rejects empty citations; `GeneratorOutput`
+  defaults and its JSON schema's `minItems: 1` on citations; generator context block
+  contents (chunk_id/firm/doc_type/item/pages/text, unlabeled item rendering);
+  invalid citations dropped and logged, a sentence left with none dropped entirely,
+  detail left unset when nothing was dropped; `partial_note` passed through; graph
+  raises `NotImplementedError` naming the right milestone for each of the three
+  flags (parametrized); default settings build a 3-node graph without raising; graph
+  with a fake retriever/generator returns a valid `Answer`, a refusal sets
+  `refusal_reason="insufficient_evidence"`, `partial_note` reaches the `Answer`.
+- `make test-int` -> 6 passed (3 pre-existing M1 tests + 3 new). New: the three real
+  Jasmeet-specified questions (Savvy minimum, Fisher fees, Vanguard SEC action) all
+  return non-refused answers whose citations resolve to retrieved chunk_ids, with
+  nonzero trace cost; the Savvy answer's text contains "500,000" (Jasmeet's verified
+  fact); "What is Savvy's CEO's favorite restaurant?" is refused with
+  `refusal_reason="insufficient_evidence"` and no sentences.
+- Manual `agentguard ask` runs (pasted, trimmed to the answer and trace):
+  - `"What is Savvy's minimum account size?"` -> two sentences citing `savvy-p13-2`
+    (Item 7) and `savvy-p9-0` (Item 5), both stating "$500,000" and keeping
+    "generally" / "negotiable" from the source; footnotes show firm, doc_type,
+    item, pages, chunk_id. Retrieve 3.4s (cold reranker load), generate cached on
+    the second identical run.
+  - `"What is Savvy's CEO's favorite restaurant?"` -> `Refused
+    (insufficient_evidence)`: "The provided chunks ... do not contain any
+    information about the CEO's personal preferences, such as a favorite
+    restaurant."
+
+**Deferred:** Nothing from M4's task list. `run_pipeline` builds a fresh `Retriever`
++ `LLMClient` + `Generator` on every call (no shared/cached instances across
+queries); fine for the CLI's one-shot use, revisit if M6's eval harness needs to
+loop over many questions without reloading models each time.
+
+**Non-obvious decisions:** see DECISIONS.md (M4 entries): unimplemented-node flags
+default off and fail loudly; baseline refusal reason; new `partial_note` field;
+invalid-citation logging location; context block format.
 
 ---
 

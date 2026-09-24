@@ -56,10 +56,10 @@ class RetrievedChunk(BaseModel):
 
 
 class CitedSentence(BaseModel):
-    """One answer sentence and the chunk_ids it cites."""
+    """One answer sentence and the chunk_ids it cites. Every sentence must cite something."""
 
     text: str
-    citations: list[str]
+    citations: list[str] = Field(min_length=1)
 
 
 class VerificationResult(BaseModel):
@@ -77,6 +77,22 @@ class PolicyDecision(BaseModel):
     reason: str
 
 
+class GeneratorOutput(BaseModel):
+    """Structured output of the generator LLM call: cited sentences, or a refusal."""
+
+    sentences: list[CitedSentence] = Field(default_factory=list)
+    refused: bool
+    refusal_message: str | None = None
+    partial_note: str | None = Field(
+        default=None,
+        description=(
+            "Set only when the provided chunks answer part of the question: a plain "
+            "statement of what is not covered. Leave unset if the question is fully "
+            "answered, or if refused is true."
+        ),
+    )
+
+
 class Answer(BaseModel):
     """Final pipeline output for one question."""
 
@@ -85,6 +101,8 @@ class Answer(BaseModel):
     refused: bool
     refusal_reason: Literal["policy", "insufficient_evidence", "verifier_rejected"] | None
     refusal_message: str | None
+    # Set when the answer covers only part of the question; see `GeneratorOutput.partial_note`.
+    partial_note: str | None = None
     retrieved: list[RetrievedChunk]
     verification: list[VerificationResult]
     removed_sentences: list[CitedSentence]

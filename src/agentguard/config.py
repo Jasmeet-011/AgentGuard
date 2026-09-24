@@ -57,9 +57,11 @@ class Settings(BaseSettings):
     # PLAN.md's baseline. "dense" and "hybrid" are ablation variants (DECISIONS.md M3).
     retrieval_mode: Literal["dense", "hybrid", "hybrid_rerank"] = "hybrid_rerank"
 
-    enable_policy_guard: bool = True
-    enable_verifier: bool = True
-    enable_score_threshold: bool = True
+    # Off by default until each node exists: policy_guard (M8), verify (M7),
+    # threshold_check (M9). `graph.build_graph` raises if one is on with no node for it.
+    enable_policy_guard: bool = False
+    enable_verifier: bool = False
+    enable_score_threshold: bool = False
 
     min_rerank_score: float = 0.0
     verifier_max_drop_ratio: float = Field(default=0.5, ge=0.0, le=1.0)

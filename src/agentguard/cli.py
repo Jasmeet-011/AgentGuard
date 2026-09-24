@@ -9,9 +9,10 @@ from rich.console import Console
 from rich.table import Table
 
 from agentguard.config import Settings
+from agentguard.graph import run_pipeline
 from agentguard.ingest.index import IndexSummary, build_indexes
 from agentguard.ingest.pipeline import DocSummary, ingest_corpus, write_chunks
-from agentguard.models import RetrievedChunk, Trace
+from agentguard.models import Answer, Chunk, RetrievedChunk, Trace
 from agentguard.retrieval.retriever import RetrievalMode, Retriever
 
 app = typer.Typer(help="AgentGuard: verified research over Form ADV brochures.")
@@ -106,3 +107,60 @@ def search(
     event = trace.events[-1]
     console.print(f"firm filter: {event.detail['firm_filter']}  counts: {event.detail['counts']}")
     console.print(f"retrieve: {event.duration_ms:.0f} ms  stages: {event.detail['stage_ms']}")
+
+
+def _footnote_line(n: int, chunk: Chunk) -> str:
+    item = "unlabeled" if chunk.adv_item is None else f"Item {chunk.adv_item} ({chunk.item_title})"
+    return (
+        f"[{n}] {chunk.firm_name} | {chunk.doc_type} | {item} | "
+        f"pages {chunk.page_start}-{chunk.page_end} | {chunk.chunk_id}"
+    )
+
+
+def _print_answer(answer: Answer) -> None:
+    if answer.refused:
+        console.print(f"[red]Refused[/red] ({answer.refusal_reason}): {answer.refusal_message}")
+        return
+    chunks_by_id = {r.chunk.chunk_id: r.chunk for r in answer.retrieved}
+    footnote_numbers: dict[str, int] = {}
+    for sentence in answer.sentences:
+        marks = []
+        for chunk_id in sentence.citations:
+            footnote_numbers.setdefault(chunk_id, len(footnote_numbers) + 1)
+            marks.append(str(footnote_numbers[chunk_id]))
+        console.print(f"{sentence.text} [dim]^{','.join(marks)}[/dim]")
+    if answer.partial_note:
+        console.print(f"\n[yellow]Not covered by the documents:[/yellow] {answer.partial_note}")
+    if footnote_numbers:
+        console.print("\nSources:")
+        for chunk_id, n in footnote_numbers.items():
+            console.print(_footnote_line(n, chunks_by_id[chunk_id]))
+
+
+def _print_trace(trace: Trace) -> None:
+    table = Table(title="Trace")
+    for column in ("node", "ms", "in tok", "out tok", "cost", "cached"):
+        table.add_column(column)
+    for e in trace.events:
+        table.add_row(
+            e.node,
+            f"{e.duration_ms:.0f}",
+            str(e.input_tokens),
+            str(e.output_tokens),
+            f"${e.cost_usd:.4f}",
+            str(e.detail.get("cached", "-")),
+        )
+    console.print(table)
+    console.print(
+        f"total: {trace.total_ms:.0f} ms, {trace.total_tokens} tokens, ${trace.total_cost_usd:.4f}"
+    )
+
+
+@app.command()
+def ask(question: Annotated[str, typer.Argument(help="Question to answer.")]) -> None:
+    """Answer QUESTION with cited sentences, through the baseline retrieve+generate pipeline."""
+    settings = Settings()
+    answer, trace = run_pipeline(question, settings)
+    _print_answer(answer)
+    console.print()
+    _print_trace(trace)
