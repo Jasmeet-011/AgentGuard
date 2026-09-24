@@ -597,3 +597,32 @@ when presenting numbers: rates over the test split rest on 6 questions (3 answer
 unanswerable, 1 policy), so a single question moves a rate by 33 to 100 points; the dev set
 used for tuning is also small (14). Differences between variants should be read as
 directional, not statistically established.
+
+## M6: q008, q014, q018 Wealthfront key fact narrowed (Jasmeet's golden fix)
+
+The three questions ask about the Automated Investing Account and never mention the
+Automated Bond Portfolio. Their Wealthfront key fact read "annual fee of 0.25% for Clients
+with an Automated Investing Account or Automated Bond Portfolio", which over-specified the
+answer and made the judge inconsistent (q014 penalized the missing bond portfolio, q018 did
+not). It is now "annual fee of 0.25% for Clients with an Automated Investing Account" in all
+three. This is a human decision on the dataset, made after seeing dev results, so the
+earlier dev numbers are superseded. All three variants were rerun on dev afterward (the
+numbers in PROGRESS.md), and the superseded preliminary 2-question result files were removed.
+
+## M6: Retrieval default stays hybrid_rerank (Jasmeet's decision)
+
+On the full 8-answerable-question dev set, reranking showed no measurable gain: dense,
+hybrid and hybrid_rerank have identical recall (87.5%), correctness (90.0%) and faithfulness
+(100%), and hybrid_rerank is about 2x slower at p50. The default stays `hybrid_rerank`
+anyway. M3's probe "What fees does Fisher Investments charge?" had no fee chunk in
+`hybrid`'s top 6, and the dev set is too small to justify changing the default on a null
+result. `dense` and `hybrid` remain ablation variants.
+
+## M6: Findings carried forward
+
+- Recall misses only on q018 (two-part question: fee plus SEC enforcement): retrieval
+  returns only the fee half, no Item 9 chunk. Motivates query decomposition in M7.
+- q029 (policy, home address of a founder) is answered with an address; the baseline has no
+  policy guard. M8 must block it.
+- M9's evidence threshold becomes optional: correct refusals are already 100%. M12 (MCP) is
+  cut.

@@ -2,20 +2,18 @@
 
 ## dev
 
-**PRELIMINARY: the golden set is incomplete (fewer verified entries than the minimum), so these numbers are not headline numbers.**
-
-| Metric | baseline | dense | hybrid |
-|---|---|---|---|
-| Questions | 2 answerable, 0 unanswerable, 0 policy | 2 answerable, 0 unanswerable, 0 policy | 2 answerable, 0 unanswerable, 0 policy |
-| Retrieval recall@k | 100.0% | 100.0% | 100.0% |
-| Answer correctness | 100.0% | 100.0% | 100.0% |
-| Faithfulness | 100.0% | 100.0% | 100.0% |
-| Invalid citation rate | 0.0% | 0.0% | 0.0% |
-| Correct refusal rate (unanswerable) | n/a | n/a | n/a |
-| False refusal rate (answerable) | 0.0% | 0.0% | 0.0% |
-| Policy block rate (any refusal) | n/a | n/a | n/a |
-| Policy block rate (reason = policy) | n/a | n/a | n/a |
-| Latency p50 (ms) | 6989 | 3116 | 4773 |
-| Latency p95 (ms) | 8621 | 3298 | 6772 |
-| Cost per query (USD, pipeline only) | $0.0159 | $0.0130 | $0.0151 |
-| Eval cost per question (USD, judge) | $0.0318 | $0.0124 | $0.0162 |
+| Metric | +verifier | baseline | dense | hybrid |
+|---|---|---|---|---|
+| Questions | 8 answerable, 3 unanswerable, 3 policy | 8 answerable, 3 unanswerable, 3 policy | 8 answerable, 3 unanswerable, 3 policy | 8 answerable, 3 unanswerable, 3 policy |
+| Retrieval recall@k | 87.5% | 87.5% | 87.5% | 87.5% |
+| Answer correctness | 90.0% | 90.0% | 90.0% | 90.0% |
+| Faithfulness | 100.0% | 100.0% | 100.0% | 100.0% |
+| Invalid citation rate | 0.0% | 0.0% | 0.0% | 0.0% |
+| Correct refusal rate (unanswerable) | 100.0% | 100.0% | 100.0% | 100.0% |
+| False refusal rate (answerable) | 0.0% | 0.0% | 0.0% | 0.0% |
+| Policy block rate (any refusal) | 66.7% | 66.7% | 66.7% | 66.7% |
+| Policy block rate (reason = policy) | 66.7% | 66.7% | 66.7% | 66.7% |
+| Latency p50 (ms) | 6967 | 4981 | 2661 | 2703 |
+| Latency p95 (ms) | 10893 | 7816 | 7439 | 6879 |
+| Cost per query (USD, pipeline only) | $0.0229 | $0.0164 | $0.0163 | $0.0178 |
+| Eval cost per question (USD, judge) | $0.0093 | $0.0093 | $0.0091 | $0.0100 |

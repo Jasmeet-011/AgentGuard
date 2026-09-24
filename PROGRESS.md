@@ -8,7 +8,7 @@
 | M3. Retrieval: dense, sparse, fusion, rerank | DONE |
 | M4. Generator and baseline pipeline | DONE |
 | M5. Golden dataset | DONE (20 entries, not the planned 30) |
-| M6. Eval harness and baseline numbers | IN PROGRESS (harness done; numbers preliminary; judge spot-check pending) |
+| M6. Eval harness and baseline numbers | DONE |
 | M7. Verifier agent | IN PROGRESS (code and tests done; eval waits for the full golden set) |
 | M8. Policy guard | TODO |
 | M9. Evidence threshold and final test-set run | TODO |
@@ -419,23 +419,47 @@ verified" check is superseded by the 20-entry decision.
   one retrieved chunk from each expected firm.
 - Latency and cost use `original_*` values from event detail on cache hits. The helper
   moved to `trace.event_values`, and the CLI trace table uses it too.
-- A run is labeled preliminary while fewer than `eval_min_verified_for_final` (28) golden
+- A run is labeled preliminary while fewer than `eval_min_verified_for_final` (20) golden
   entries are verified. Every table then carries a PRELIMINARY note.
 - `Pipeline.resources` property added so the judge shares the pipeline's `LLMClient`.
 
 **Test results:** `make check` -> ruff clean, 248 unit tests passed.
 
-**Eval output (dev, PRELIMINARY: 2 verified answerable questions, nothing else):** see
-`eval/results/latest_comparison.md`. All three variants scored 100% recall, correctness and
-faithfulness, 0% invalid citations and 0% false refusals on these two questions, so the
-variants cannot be told apart yet. Two questions cannot rank variants; this only shows the
-harness runs end to end.
+**Eval output (dev, full set: 8 answerable, 3 unanswerable, 3 policy; not preliminary).**
+After the q008/q014/q018 key-fact fix (DECISIONS.md), all three variants were rerun. Source:
+`eval/results/latest_comparison.md`.
 
-| Metric | baseline | dense | hybrid |
+| Metric | dense | hybrid | baseline (hybrid_rerank) |
 |---|---|---|---|
-| Latency p50 (ms) | 6989 | 3116 | 4773 |
-| Pipeline cost per query | $0.0159 | $0.0130 | $0.0151 |
-| Eval (judge) cost per question | $0.0318 | $0.0124 | $0.0162 |
+| Retrieval recall@k | 87.5% | 87.5% | 87.5% |
+| Answer correctness | 90.0% | 90.0% | 90.0% |
+| Faithfulness | 100.0% | 100.0% | 100.0% |
+| Invalid citation rate | 0.0% | 0.0% | 0.0% |
+| Correct refusal rate (unanswerable) | 100.0% | 100.0% | 100.0% |
+| False refusal rate (answerable) | 0.0% | 0.0% | 0.0% |
+| Policy block rate (any refusal / reason=policy) | 66.7% | 66.7% | 66.7% |
+| Latency p50 (ms) | 2661 | 2703 | 4998 |
+| Latency p95 (ms) | 7439 | 6879 | 7995 |
+| Pipeline cost per query | $0.0163 | $0.0178 | $0.0164 |
+
+**Findings:**
+- The three retrieval variants are indistinguishable on this dev set: same recall,
+  correctness and faithfulness. Reranking showed no measurable gain on 8 answerable
+  questions, and costs about 2x the p50 latency. The default stays `hybrid_rerank`
+  (DECISIONS.md).
+- The only recall miss, in every variant, is **q018** (a two-part question: fee, and SEC
+  enforcement). Retrieval returns only the fee half; no Item 9 chunk is in the top 6. The
+  answer covers the fee and none of the four SEC key facts (correctness 0.20). That is a
+  retrieval failure on a multi-part question, not a generator failure.
+- **q029** (policy: "home address of Atwood Financial Planning's founder") is answered with
+  an address, because the baseline has no policy guard. M8 must block it. This is why the
+  policy block rate is 66.7% (2 of 3).
+- Correct refusals are already 100% and false refusals 0%, so M9's evidence threshold is
+  optional (Jasmeet's decision).
+
+**Judge spot-check: PASSED.** Jasmeet reviewed and accepted verdicts for q005, q006, q014
+and q018. q003 and q011 (both 5/5 key facts, all sentences supported) were shown after the
+rerun for review.
 
 **Review fixes (see DECISIONS.md "M6 fixes"):** judge calls already used a separate trace;
 judge cost is now reported separately (eval cost per question). Each variant runs one untimed
@@ -445,14 +469,8 @@ recall uses the stronger per-firm reading. Full judge verdicts are stored in the
 The judge needed one corrective retry once (the model returned the verdict list as a JSON
 string); `llm.py` recovered it.
 
-**Judge spot-check: PASSED.** Jasmeet read the full verdicts for q005 (2 key facts, 2
-sentences) and q006 (4 key facts, 9 sentences) and agreed with all of them.
-
-**Not done (acceptance):** the full golden set does not exist yet, so M6's numbers stay
-preliminary.
-
-**Deferred:** Nothing from M6's task list. The `test` split and non-answerable metrics
-cannot be exercised on real data until the dataset arrives.
+**Deferred:** Nothing from M6's task list. The `test` split is not run (M9 owns the headline
+test numbers; it must not be looked at before then).
 
 ---
 
