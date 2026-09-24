@@ -58,6 +58,7 @@ def _drop_invalid_citations(
         sentences=kept,
         refused=output.refused,
         refusal_message=output.refusal_message,
+        refusal_kind=output.refusal_kind,
         partial_note=output.partial_note,
     )
 

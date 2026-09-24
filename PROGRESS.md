@@ -331,6 +331,16 @@ loop over many questions without reloading models each time.
 default off and fail loudly; baseline refusal reason; new `partial_note` field;
 invalid-citation logging location; context block format.
 
+**M4 fix (post-commit):** added `GeneratorOutput.refusal_kind` (`"insufficient_evidence"`
+or `"advice_request"`, set by the generator per prompt rules 6/7) so an advice-request
+refusal now reports `Answer.refusal_reason="policy"` instead of
+`"insufficient_evidence"`; a genuine no-relevant-chunks refusal still reports
+`"insufficient_evidence"`. Updated the prompt's Output section, `graph._build_answer`'s
+mapping, and added unit tests in `test_models.py`, `test_agents_generator.py`, and
+`test_graph.py`. Manually verified: "Should my 60-year-old client move her IRA to
+Savvy?" -> `Refused (policy)`. `make check` (193 passed) and `make test-int` (6 passed)
+both green. See DECISIONS.md.
+
 ---
 
 ## Notes for later milestones

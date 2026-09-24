@@ -83,6 +83,14 @@ class GeneratorOutput(BaseModel):
     sentences: list[CitedSentence] = Field(default_factory=list)
     refused: bool
     refusal_message: str | None = None
+    refusal_kind: Literal["insufficient_evidence", "advice_request"] | None = Field(
+        default=None,
+        description=(
+            "Set only when refused is true: 'insufficient_evidence' if none of the "
+            "provided chunks are relevant (rule 6), 'advice_request' if the question "
+            "asks for personalized investment advice (rule 7)."
+        ),
+    )
     partial_note: str | None = Field(
         default=None,
         description=(

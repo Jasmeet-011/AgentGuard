@@ -106,7 +106,7 @@ def test_graph_returns_valid_answer_from_mocked_retriever_and_generator() -> Non
     assert generator.calls[0][0] == "What fees does Acme charge?"
 
 
-def test_refusal_sets_insufficient_evidence_reason() -> None:
+def test_refusal_with_no_refusal_kind_defaults_to_insufficient_evidence() -> None:
     retriever = FakeRetriever([])
     generator = FakeGenerator(
         GeneratorOutput(refused=True, refusal_message="No chunks are relevant.")
@@ -118,6 +118,38 @@ def test_refusal_sets_insufficient_evidence_reason() -> None:
     assert answer.refusal_reason == "insufficient_evidence"
     assert answer.refusal_message == "No chunks are relevant."
     assert answer.sentences == []
+
+
+def test_refusal_kind_insufficient_evidence_maps_to_same_reason() -> None:
+    retriever = FakeRetriever([])
+    generator = FakeGenerator(
+        GeneratorOutput(
+            refused=True,
+            refusal_kind="insufficient_evidence",
+            refusal_message="No chunks are relevant.",
+        )
+    )
+
+    answer = _invoke(retriever, generator)
+
+    assert answer.refusal_reason == "insufficient_evidence"
+
+
+def test_refusal_kind_advice_request_maps_to_policy_reason() -> None:
+    retriever = FakeRetriever([])
+    generator = FakeGenerator(
+        GeneratorOutput(
+            refused=True,
+            refusal_kind="advice_request",
+            refusal_message="This tool does not give personalized investment advice.",
+        )
+    )
+
+    answer = _invoke(retriever, generator)
+
+    assert answer.refused is True
+    assert answer.refusal_reason == "policy"
+    assert answer.refusal_message == "This tool does not give personalized investment advice."
 
 
 def test_partial_note_carried_into_answer() -> None:

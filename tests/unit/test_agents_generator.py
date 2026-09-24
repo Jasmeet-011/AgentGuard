@@ -143,3 +143,21 @@ def test_refusal_and_partial_note_pass_through_unchanged() -> None:
 
     assert result.partial_note == "Custody is not covered by the provided chunks."
     assert result.refused is False
+
+
+def test_refusal_kind_passes_through_unchanged() -> None:
+    output = GeneratorOutput(
+        refused=True,
+        refusal_kind="advice_request",
+        refusal_message="This tool does not give personalized investment advice.",
+    )
+    llm = FakeLLMClient(output)
+    generator = Generator(settings(), llm)  # type: ignore[arg-type]
+    chunk = make_chunk("acme-p7-0")
+
+    result = generator.generate(
+        "Should I move my IRA to Acme?", [retrieved(chunk)], Trace(query_id="q1")
+    )
+
+    assert result.refusal_kind == "advice_request"
+    assert result.refused is True

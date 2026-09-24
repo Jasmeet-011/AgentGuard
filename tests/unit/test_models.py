@@ -104,6 +104,19 @@ def test_generator_output_defaults_to_no_sentences_and_no_partial_note() -> None
     output = GeneratorOutput(refused=True, refusal_message="Not in the documents.")
     assert output.sentences == []
     assert output.partial_note is None
+    assert output.refusal_kind is None
+
+
+def test_generator_output_accepts_advice_request_refusal_kind() -> None:
+    output = GeneratorOutput(
+        refused=True, refusal_kind="advice_request", refusal_message="No personalized advice."
+    )
+    assert output.refusal_kind == "advice_request"
+
+
+def test_generator_output_rejects_unknown_refusal_kind() -> None:
+    with pytest.raises(ValidationError, match="refusal_kind"):
+        GeneratorOutput(refused=True, refusal_kind="bored", refusal_message="x")
 
 
 def test_generator_output_schema_marks_citations_min_items() -> None:

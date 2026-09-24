@@ -1,7 +1,7 @@
 """The LangGraph pipeline: retrieve -> generate -> finalize, built from config flags."""
 
 import uuid
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -39,6 +39,16 @@ def _check_implemented(settings: Settings) -> None:
             )
 
 
+# The generator's own refusal_kind, mapped to Answer's refusal_reason. There is no policy_guard
+# node yet (M8), so an advice-request refusal from the generator's prompt-level guard (rule 7)
+# is still reported as "policy"; anything else refused falls back to "insufficient_evidence".
+_REFUSAL_REASON: dict[str | None, Literal["policy", "insufficient_evidence"]] = {
+    "advice_request": "policy",
+    "insufficient_evidence": "insufficient_evidence",
+    None: "insufficient_evidence",
+}
+
+
 def _build_answer(
     question: str, retrieved: list[RetrievedChunk], output: GeneratorOutput
 ) -> Answer:
@@ -46,8 +56,7 @@ def _build_answer(
         question=question,
         sentences=output.sentences,
         refused=output.refused,
-        # No policy or verifier node yet (M7/M8): any baseline refusal is for lack of evidence.
-        refusal_reason="insufficient_evidence" if output.refused else None,
+        refusal_reason=_REFUSAL_REASON[output.refusal_kind] if output.refused else None,
         refusal_message=output.refusal_message,
         partial_note=output.partial_note,
         retrieved=retrieved,

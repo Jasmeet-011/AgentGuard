@@ -380,6 +380,17 @@ non-zero). A sentence whose only citations are all invalid is dropped entirely
 (citations were already required to be non-empty by the schema, so a sentence with
 zero valid citations left cannot stand).
 
+## M4 fix: `GeneratorOutput.refusal_kind` distinguishes advice refusals from policy
+
+Follow-up to "M4: Baseline refusal reason is always `insufficient_evidence`". Jasmeet's
+fix: add `refusal_kind: Literal["insufficient_evidence", "advice_request"] | None` to
+`GeneratorOutput`, set by the generator per prompt rules 6 and 7, and map it in
+`graph._build_answer` (`_REFUSAL_REASON`) to `Answer.refusal_reason`:
+`"advice_request" -> "policy"`, `"insufficient_evidence"` or unset -> `"insufficient_evidence"`.
+An advice-request refusal (rule 7) now reports `refusal_reason="policy"` even though
+there is still no M8 policy_guard node — the reason reflects why the baseline generator
+refused, not which node did it.
+
 ## M4: Context block sent to the generator
 
 Jasmeet's M4 instruction: show chunk_id, firm name, doc_type, item number and
