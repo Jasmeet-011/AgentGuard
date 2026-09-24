@@ -319,3 +319,22 @@ stays `hybrid`. This departs from the stack table's reranker model, with Jasmeet
 authorization for this test. Caveats: 6 queries is a tiny sample; ms-marco is trained
 on English web-search queries, not financial disclosures; and 2.1 s is still over the
 1.5 s budget. M6 measures whether the variant helps.
+
+## After M3: Default retrieval_mode back to "hybrid_rerank" (Jasmeet's decision)
+
+This reverses "M3: Default retrieval_mode is 'hybrid'" above. The default is
+`hybrid_rerank` with the MiniLM reranker (`cross-encoder/ms-marco-MiniLM-L-6-v2`).
+Rationale: in `hybrid` mode, none of Fisher's Item 5 fee chunks make the top 6, so the
+generator cannot answer a basic fee question. MiniLM reranking puts Item 5 first.
+Its ~2.1 s warm latency (max 2.7 s) is acceptable because LLM calls dominate
+end-to-end latency. This accepts a miss on the 1.5 s retrieval target from PLAN.md
+M3, which was measured and recorded rather than hidden. PLAN.md's `baseline` variant
+stays `hybrid_rerank`; `dense` and `hybrid` remain ablation variants for M6.
+
+## After M3: M9's evidence threshold uses the rerank score (Jasmeet's decision)
+
+As planned: `threshold_check` compares the top `rerank_score` (a raw MiniLM logit;
+see "M3: Raw reranker logits") to `min_rerank_score`. It applies only when reranking
+ran, which is now the default. `min_rerank_score` is tuned on dev in M9 on the logit
+scale. For reference, top-1 MiniLM logits on the M3 manual queries ranged from 1.60
+(the flat-fee query, which failed) to 9.72 (Gibbs custody).

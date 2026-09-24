@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     # bge-v1.5's recommended instruction for short retrieval queries (passages get none).
     embedding_query_prefix: str = "Represent this sentence for searching relevant passages: "
-    # Used only by the hybrid_rerank variant; chosen over bge-reranker-base in M3 (DECISIONS.md).
+    # Chosen over bge-reranker-base in M3: ~6x faster on CPU (DECISIONS.md).
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
     chunk_target_tokens: int = Field(default=400, gt=0)
@@ -54,9 +54,8 @@ class Settings(BaseSettings):
     rrf_k: int = Field(default=60, gt=0)
     rerank_top_n: int = Field(default=6, gt=0)
 
-    # "hybrid" by default: reranking costs 2-13 s/query on this CPU (see DECISIONS.md M3);
-    # "hybrid_rerank" stays available as an eval variant.
-    retrieval_mode: Literal["dense", "hybrid", "hybrid_rerank"] = "hybrid"
+    # PLAN.md's baseline. "dense" and "hybrid" are ablation variants (DECISIONS.md M3).
+    retrieval_mode: Literal["dense", "hybrid", "hybrid_rerank"] = "hybrid_rerank"
 
     enable_policy_guard: bool = True
     enable_verifier: bool = True

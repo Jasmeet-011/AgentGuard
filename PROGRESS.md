@@ -195,9 +195,10 @@ firms.py 31, items.py 166, parse.py 149, pipeline.py 103, sections.py 189
   "Investment risks" appendix (7 chunks) was mislabeled Item 19 and is now
   unlabeled. Corpus: 746 chunks, 733 indexed, 13 TOC excluded (1 per firm;
   Betterment, Creative Planning and Edelman have 2 each).
-- Config (approved by Jasmeet): `retrieval_mode` default is `hybrid`;
-  `reranker_model` is `cross-encoder/ms-marco-MiniLM-L-6-v2`; `rerank_score` is a
-  raw logit. See DECISIONS.md.
+- Config (approved by Jasmeet): `reranker_model` is
+  `cross-encoder/ms-marco-MiniLM-L-6-v2`; `rerank_score` is a raw logit. The
+  `retrieval_mode` default was `hybrid` at the M3 commit; after M3, Jasmeet set it
+  back to `hybrid_rerank` (see DECISIONS.md "After M3").
 
 **Models:** first-run download to `C:\Users\HTC\.cache\huggingface\hub`:
 bge-small-en-v1.5 133 MB and bge-reranker-base 1.13 GB (evaluated, no longer the
@@ -261,12 +262,19 @@ Betterment wrap appendix, and cross-firm questions is left to M6 to measure.
 
 ## Notes for later milestones
 
-- **M6:** add a `hybrid_rerank` variant (MiniLM reranker) next to `dense_only`,
-  `hybrid`, `baseline`. PLAN.md defines `baseline` as hybrid_rerank; with the
-  default now `hybrid`, decide with Jasmeet which one `baseline` means.
-- **M9:** `min_rerank_score` is on the raw-logit scale and only applies when
-  reranking runs. In the default `hybrid` mode there is no rerank score, so the
-  threshold needs a decision (fused score, or rerank only for the threshold).
-- **M13 offline demo:** sentence-transformers sends HTTP HEAD requests to the Hugging
-  Face Hub on every model load. With the network off, set `HF_HUB_OFFLINE=1` (models
-  are cached in `~/.cache/huggingface/hub`).
+- **Default retrieval (decided after M3):** `retrieval_mode = "hybrid_rerank"`
+  with the MiniLM reranker, about 2.1 s warm on this CPU.
+- **M4 integration questions (Jasmeet):**
+  - Answerable: "What is Savvy's minimum account size?"; "What fees does Fisher
+    Investments charge?"; "Has Vanguard been subject to any SEC enforcement action?"
+  - Refusal: "What is Savvy's CEO's favorite restaurant?"
+- **M6:** `baseline` = `hybrid_rerank` (PLAN.md, unchanged). `dense_only` and
+  `hybrid` are the ablation variants.
+- **M9:** the evidence threshold uses the top `rerank_score` (raw MiniLM logit),
+  as planned; tune `min_rerank_score` on dev.
+- **M13 offline demo:** set `HF_HUB_OFFLINE=1` in the environment for the demo
+  (Streamlit, the CLI, and the `--offline-demo` launch). Without it,
+  sentence-transformers sends HTTP HEAD requests to the Hugging Face Hub on every
+  model load, which slows cold start and can fail with the network off. Models are
+  cached in `~/.cache/huggingface/hub` (bge-small 133 MB, MiniLM 88 MB). Verify
+  with the network actually disconnected.
