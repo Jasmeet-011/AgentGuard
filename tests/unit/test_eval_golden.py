@@ -36,11 +36,14 @@ def test_valid_file_loads_with_defaults(tmp_path: Path) -> None:
     assert loaded.notes == ""
 
 
-def test_the_committed_golden_file_is_valid() -> None:
+def test_the_committed_golden_file_is_valid_against_the_real_firms() -> None:
+    from agentguard.config import PROJECT_ROOT
+    from agentguard.ingest.firms import load_firms
     from eval.golden import GOLDEN_PATH
 
-    entries = load_golden(GOLDEN_PATH, {"savvy"})
-    assert {e.id for e in entries} >= {"q005", "q006"}
+    slugs = set(load_firms(PROJECT_ROOT / "data" / "raw"))
+    entries = load_golden(GOLDEN_PATH, slugs)
+    assert {"q005", "q006"} <= {e.id for e in entries}
 
 
 @pytest.mark.parametrize(
