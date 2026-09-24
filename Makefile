@@ -19,7 +19,7 @@ ingest:
 	uv run agentguard ingest
 
 eval:
-	@echo "agentguard eval is not implemented until M6" && exit 1
+	uv run agentguard eval --split dev
 
 app:
 	@echo "streamlit app is not implemented until M10" && exit 1

@@ -466,3 +466,56 @@ built explicitly in `Generator._chunk_context_block` rather than relying on the
 one-line header already embedded in `chunk.text` (from M2), since that header omits
 doc_type, pages, and the chunk_id itself. The full chunk text (including its
 embedded header) still follows.
+
+## M5: Golden schema uses `expected_sources` (Jasmeet's change)
+
+PLAN.md's schema has `firm` and `expected_items`. Replaced by `expected_sources`: a list of
+`{firm, doc_type, item, page}`, because item numbers mean different things per `doc_type`
+(Betterment's wrap appendix Item 5 is not Part 2A Item 5) and a two-firm question needs a
+source per firm. New fields: `match` (`any` default | `all`), and `split` may be `TBD` while
+Jasmeet builds the set (TBD entries are never evaluated). Only `verified: true` entries are
+evaluated. Claude Code drafts no entries and never sets `verified`. Answerable entries need
+non-empty `key_facts` and `expected_sources` with a page on each; unanswerable and policy
+entries need both empty. `page` is documentation for whoever verifies; recall does not match
+on it.
+
+## M5: q006's page placeholder
+
+Jasmeet's message had `"page": PAGE` in q006, which is not JSON. Asked; Jasmeet confirmed
+page 9 in the PDF (the only Savvy chunk with the 0.30% to 1.9% range is savvy-p9-0, Item 5).
+Written as 9. Nothing else in q005 or q006 was changed.
+
+## M6: `eval` is a top-level package; CLI adds the repo root to `sys.path`
+
+PLAN.md puts eval code in `eval/`, outside the installed `agentguard` package. pytest gets
+`pythonpath = ["."]` and ruff `src = ["src", "."]`. `agentguard eval` and `agentguard golden`
+import `eval.*` lazily after putting `PROJECT_ROOT` on `sys.path`, so they work from any cwd
+in an editable install. `make eval` calls the CLI.
+
+## M6: Metric definitions
+
+- **Recall@k:** k is `rerank_top_n` (6). Match = same firm + doc_type + item (page ignored).
+  Comparison questions (expected sources from more than one firm) also need at least one
+  retrieved chunk from every expected firm. That reads "at least one chunk per expected firm"
+  literally: any chunk of that firm counts, not only one matching an expected source. It is
+  the weaker reading, since the retriever already splits slots across named firms.
+- **Correctness:** the judge marks each key fact present or missing (qualifiers such as
+  "negotiable" must be conveyed; numbers must match exactly); score = fraction present. A
+  refused or empty answer scores 0.0 without a judge call.
+- **Faithfulness:** the judge gives each sentence supported, partial or unsupported against
+  the full text of its own cited chunks. Score = fraction `supported`; `partial` does not
+  count. Only answerable, non-refused questions with sentences are scored.
+- **Invalid citation rate:** sum of `invalid_citations_dropped` over generate events divided
+  by all citations the generator emitted (dropped + kept), summed over the run. None when no
+  citations were emitted.
+- **Refusal metrics:** correct refusal = unanswerable with `refused`; false refusal =
+  answerable with `refused`; policy block = policy with `refused`, and the second policy
+  row also requires `refusal_reason == "policy"`.
+- **Latency and cost:** per query, the sum over trace events of `event_values` (originals on
+  cache hits). p50 and p95 use linear interpolation. Judge calls are not counted. Retrieval is
+  never cached, so latency varies between otherwise identical runs.
+- Judge output must cover exactly the key facts or sentences asked about; anything else
+  raises `JudgeError` rather than guessing.
+- `eval_min_verified_for_final = 28` in config decides the "preliminary" label (PLAN.md's M5
+  acceptance threshold).
+- Variant `dense_only` from PLAN.md is named `dense` (Jasmeet's instruction).

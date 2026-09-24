@@ -89,6 +89,11 @@ class Pipeline:
         generator = Generator(settings, resources.llm)
         self._graph = build_graph(settings, retriever, generator)
 
+    @property
+    def resources(self) -> Resources:
+        """The shared `Resources` this pipeline was built from (e.g. for the eval judge's LLM)."""
+        return self._resources
+
     @classmethod
     def from_settings(cls, settings: Settings) -> "Pipeline":
         """Load a fresh `Resources` for `settings`, then build a `Pipeline` from it."""

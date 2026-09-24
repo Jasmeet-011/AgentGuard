@@ -22,3 +22,20 @@ def trace_node(trace: Trace, name: str) -> Iterator[TraceEvent]:
     finally:
         event.duration_ms = (time.perf_counter() - start) * 1000
         trace.events.append(event)
+
+
+def event_values(event: TraceEvent) -> tuple[float, int, int, float]:
+    """(ms, in tokens, out tokens, cost) of `event`; a cache hit reports the original call's.
+
+    A cache hit records ~0 actual duration and cost, so reports that want what a query really
+    takes (the CLI trace, the eval harness) read the `original_*` values from `detail` instead.
+    Falls back to the actuals when a cached event carries no originals.
+    """
+    if not event.detail.get("cached"):
+        return event.duration_ms, event.input_tokens, event.output_tokens, event.cost_usd
+    return (
+        event.detail.get("original_duration_ms", event.duration_ms),
+        event.detail.get("original_input_tokens", event.input_tokens),
+        event.detail.get("original_output_tokens", event.output_tokens),
+        event.detail.get("original_cost_usd", event.cost_usd),
+    )

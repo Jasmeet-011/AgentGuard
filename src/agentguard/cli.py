@@ -1,6 +1,7 @@
 """Command-line entry point: `agentguard ingest`, `search` (later: `ask`, `eval`)."""
 
 import logging
+import sys
 import uuid
 from typing import Annotated
 
@@ -8,12 +9,13 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from agentguard.config import Settings
+from agentguard.config import PROJECT_ROOT, Settings
 from agentguard.ingest.index import IndexSummary, build_indexes
 from agentguard.ingest.pipeline import DocSummary, ingest_corpus, write_chunks
-from agentguard.models import Answer, Chunk, RetrievedChunk, Trace, TraceEvent
-from agentguard.pipeline import run_pipeline
+from agentguard.models import Answer, Chunk, RetrievedChunk, Trace
+from agentguard.pipeline import Pipeline, run_pipeline
 from agentguard.retrieval.retriever import RetrievalMode, Retriever
+from agentguard.trace import event_values
 
 app = typer.Typer(help="AgentGuard: verified research over Form ADV brochures.")
 console = Console()
@@ -139,25 +141,13 @@ def _print_answer(answer: Answer) -> None:
             console.print(_footnote_line(n, chunks_by_id[chunk_id]))
 
 
-def _trace_row_values(e: TraceEvent) -> tuple[float, int, int, float]:
-    """(ms, in tokens, out tokens, cost) to display: a cache hit shows the original call's."""
-    if not e.detail.get("cached"):
-        return e.duration_ms, e.input_tokens, e.output_tokens, e.cost_usd
-    return (
-        e.detail.get("original_duration_ms", e.duration_ms),
-        e.detail.get("original_input_tokens", e.input_tokens),
-        e.detail.get("original_output_tokens", e.output_tokens),
-        e.detail.get("original_cost_usd", e.cost_usd),
-    )
-
-
 def _print_trace(trace: Trace) -> None:
     table = Table(title="Trace")
     for column in ("node", "ms", "in tok", "out tok", "cost", "cached"):
         table.add_column(column)
     original_cost_usd = 0.0
     for e in trace.events:
-        ms, in_tok, out_tok, cost = _trace_row_values(e)
+        ms, in_tok, out_tok, cost = event_values(e)
         original_cost_usd += cost
         table.add_row(
             e.node,
@@ -182,3 +172,64 @@ def ask(question: Annotated[str, typer.Argument(help="Question to answer.")]) ->
     _print_answer(answer)
     console.print()
     _print_trace(trace)
+
+
+def _import_eval() -> None:
+    """Make the repo-root `eval` package importable (it is not part of the installed package)."""
+    root = str(PROJECT_ROOT)
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+
+@app.command()
+def golden() -> None:
+    """Validate eval/golden.jsonl and print counts by type x split (verified / total)."""
+    _import_eval()
+    from eval.golden import ENTRY_TYPES, SPLITS, GoldenError, summary_counts
+    from eval.run_eval import load_entries
+
+    try:
+        entries = load_entries(Settings())
+    except GoldenError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    counts = summary_counts(entries)
+    table = Table(title="Golden set: verified / total")
+    table.add_column("type")
+    for split in SPLITS:
+        table.add_column(split)
+    for kind in ENTRY_TYPES:
+        cells = [
+            f"{counts.get((kind, s), (0, 0))[1]} / {counts.get((kind, s), (0, 0))[0]}"
+            for s in SPLITS
+        ]
+        table.add_row(kind, *cells)
+    console.print(table)
+    console.print(f"{len(entries)} entries, {sum(e.verified for e in entries)} verified. Valid.")
+
+
+@app.command(name="eval")
+def eval_command(
+    variant: Annotated[
+        list[str] | None, typer.Option(help="Variant to run; repeat for several. Default: all.")
+    ] = None,
+    split: Annotated[str, typer.Option(help="dev or test.")] = "dev",
+) -> None:
+    """Run the golden set (verified entries of SPLIT) through pipeline variants and record metrics."""
+    _import_eval()
+    from eval.report import failure_text, is_failure, run_markdown, write_comparison, write_run
+    from eval.run_eval import VARIANTS, load_entries, run_variant
+
+    settings = Settings()
+    entries = load_entries(settings)
+    names = variant or list(VARIANTS)
+    base = Pipeline.from_settings(settings)
+    for name in names:
+        run = run_variant(name, split, base, settings, entries)
+        json_path, _ = write_run(run, settings.results_dir)
+        console.print(run_markdown(run))
+        for row in (r for r in run.rows if is_failure(r)):
+            console.print(f"[yellow]{failure_text(row)}[/yellow]")
+        console.print(f"Wrote {json_path}")
+        console.print()
+    console.print(f"Wrote {write_comparison(settings.results_dir)}")

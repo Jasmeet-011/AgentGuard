@@ -7,8 +7,8 @@
 | M2. Ingestion: parse and chunk | DONE |
 | M3. Retrieval: dense, sparse, fusion, rerank | DONE |
 | M4. Generator and baseline pipeline | DONE |
-| M5. Golden dataset | TODO |
-| M6. Eval harness and baseline numbers | TODO |
+| M5. Golden dataset | IN PROGRESS (code done; dataset is being built by Jasmeet) |
+| M6. Eval harness and baseline numbers | IN PROGRESS (harness done; numbers preliminary; judge spot-check pending) |
 | M7. Verifier agent | TODO |
 | M8. Policy guard | TODO |
 | M9. Evidence threshold and final test-set run | TODO |
@@ -361,6 +361,87 @@ again; `ALLOWED_OVERRIDE_FIELDS` matches the spec). `make test-int` -> 7 passed
 (renamed `test_pipeline_integration.py`, cache disabled per-test to avoid a
 cached-cost false negative; added a real `Pipeline` reuse + `with_overrides`
 test). Manual `agentguard ask` run confirmed the CLI still works unchanged.
+
+---
+
+## M5 details (code only; the dataset is Jasmeet's)
+
+Jasmeet is building the golden dataset in a separate process, so M5 here is code only.
+Claude Code drafted no entries and marked nothing verified.
+
+**What was built:**
+- `eval/golden.py`: `GoldenEntry` and `ExpectedSource` (pydantic, `extra="forbid"`).
+  Fields: `id`, `split` (`dev` | `test` | `TBD`), `type`, `question`,
+  `expected_sources` (`{firm, doc_type, item, page}`), `match` (`any` | `all`, default
+  `any`), `key_facts`, `notes`, `verified`. `load_golden(path, valid_slugs)` reports every
+  problem at once, with line numbers: invalid JSON, schema errors, duplicate ids, unknown
+  firm slugs. Answerable entries need non-empty `key_facts` and `expected_sources` with a
+  page on each; unanswerable and policy entries need both empty. `select_entries` returns
+  only verified entries of a split. `summary_counts` gives (total, verified) per type x
+  split.
+- `eval/golden.jsonl`: exactly Jasmeet's two entries, q005 and q006, both verified. The
+  only edit is q006's `"page": PAGE` placeholder, which is not valid JSON; Jasmeet
+  confirmed page 9 in the PDF (DECISIONS.md).
+- `agentguard golden` (added in the M6 commit, since it shares `cli.py` with `agentguard
+  eval`): validates the file and prints the type x split table.
+
+**Test results:** `tests/unit/test_eval_golden.py`, 18 tests: valid load and defaults,
+the committed file, 10 invalid-entry cases, an empty unanswerable/policy pair, duplicate
+ids with unknown slugs reported together, invalid JSON line numbers, a missing file, and
+verified-only selection.
+
+**Still needed from Jasmeet:** the full dataset (30 entries, at least 28 verified) before
+M5 can be marked DONE.
+
+---
+
+## M6 details
+
+**What was built:**
+- `eval/metrics.py` (deterministic metrics as pure functions), `eval/judge.py` (two
+  structured-output judges), `eval/records.py` (typed rows and aggregate), `eval/report.py`
+  (per-run JSON and markdown, `latest_comparison.md`, failure text), `eval/run_eval.py`
+  (`VARIANTS`, `evaluate_question`, `run_variant`), prompts `judge_correctness.md` and
+  `judge_faithfulness.md`.
+- `agentguard eval [--variant X ...] [--split dev|test]`. It builds
+  `Pipeline.from_settings` once and `with_overrides` per variant, so models load once.
+  `make eval` runs all three variants on dev. Variants: `dense`, `hybrid`, `baseline`
+  (hybrid_rerank), all with verifier, policy and threshold off.
+- Retrieval hit: same firm + doc_type + item as an expected source. `match="any"` needs
+  one hit, `"all"` needs every one. A comparison (expected firms > 1) also needs at least
+  one retrieved chunk from each expected firm.
+- Latency and cost use `original_*` values from event detail on cache hits. The helper
+  moved to `trace.event_values`, and the CLI trace table uses it too.
+- A run is labeled preliminary while fewer than `eval_min_verified_for_final` (28) golden
+  entries are verified. Every table then carries a PRELIMINARY note.
+- `Pipeline.resources` property added so the judge shares the pipeline's `LLMClient`.
+
+**Test results:** `make check` -> ruff clean, 246 unit tests passed (39 new: golden 18,
+metrics 15, judge/run/report 6).
+
+**Eval output (dev, PRELIMINARY: 2 verified answerable questions, nothing else):** see
+`eval/results/latest_comparison.md`. All three variants scored 100% recall, correctness and
+faithfulness, 0% invalid citations and 0% false refusals on these two questions, so the
+variants cannot be told apart yet. Two questions cannot rank variants; this only shows the
+harness runs end to end.
+
+| Metric | baseline | dense | hybrid |
+|---|---|---|---|
+| Latency p50 (ms) | 12694 | 3113 | 4762 |
+| Cost per query (USD) | $0.0159 | $0.0130 | $0.0151 |
+
+**Reproducibility check:** baseline on dev run twice. Every metric was identical except
+latency: retrieval is timed live and is not cached (baseline p50 was 7124 ms on the first
+run, 12694 ms on the second; the LLM parts are replayed from cache). So "identical numbers"
+holds for everything but retrieval latency. The judge needed one corrective retry (the
+model returned the verdict list as a JSON string); `llm.py` recovered it, and the retry is
+in the cached entry.
+
+**Not done (acceptance):** Jasmeet has not yet spot-checked 3 judge verdicts, and the full
+golden set does not exist. The judge prompts are printed in the report for review.
+
+**Deferred:** Nothing from M6's task list. The `test` split and non-answerable metrics
+cannot be exercised on real data until the dataset arrives.
 
 ---
 

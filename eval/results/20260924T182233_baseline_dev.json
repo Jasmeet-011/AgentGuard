@@ -1,0 +1,98 @@
+{
+  "variant": "baseline",
+  "split": "dev",
+  "timestamp": "20260924T182233",
+  "preliminary": true,
+  "verified_in_file": 2,
+  "unverified_skipped": 0,
+  "top_k": 6,
+  "config": {
+    "retrieval_mode": "hybrid_rerank",
+    "rerank_top_n": 6,
+    "dense_top_k": 20,
+    "sparse_top_k": 20,
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "generator_model": "claude-sonnet-5",
+    "judge_model": "claude-sonnet-5",
+    "enable_verifier": false,
+    "enable_policy_guard": false,
+    "enable_score_threshold": false,
+    "min_rerank_score": 0.0
+  },
+  "aggregate": {
+    "n_answerable": 2,
+    "n_unanswerable": 0,
+    "n_policy": 0,
+    "retrieval_recall": 1.0,
+    "correctness": 1.0,
+    "faithfulness": 1.0,
+    "invalid_citation_rate": 0.0,
+    "correct_refusal_rate": null,
+    "false_refusal_rate": 0.0,
+    "policy_block_rate": null,
+    "policy_reason_rate": null,
+    "latency_p50_ms": 12694.290100014769,
+    "latency_p95_ms": 14507.877760013798,
+    "cost_per_query_usd": 0.01593
+  },
+  "rows": [
+    {
+      "id": "q005",
+      "type": "answerable",
+      "question": "What is Savvy's minimum account size?",
+      "refused": false,
+      "refusal_reason": null,
+      "answer_text": "Savvy's minimum account size is generally $500,000, but this amount is negotiable at the advisor's discretion. Each investment advisor representative may, in their sole discretion, negotiate a different minimum account size, and advisors may also impose a minimum account fee for accounts below the required minimum.",
+      "retrieved_chunk_ids": [
+        "savvy-p13-2",
+        "savvy-p9-0",
+        "savvy-p9-1",
+        "savvy-p7-0",
+        "savvy-p30-0",
+        "savvy-p25-0"
+      ],
+      "retrieval_hit": true,
+      "correctness": 1.0,
+      "correctness_reasons": [
+        "present '$500,000 minimum': Answer states 'generally $500,000'",
+        "present \"negotiable at the advisor's discretion\": Answer states 'this amount is negotiable at the advisor's discretion'"
+      ],
+      "faithfulness": 1.0,
+      "faithfulness_reasons": [],
+      "invalid_citations": 0,
+      "total_citations": 3,
+      "latency_ms": 10679.192700015847,
+      "cost_usd": 0.013172
+    },
+    {
+      "id": "q006",
+      "type": "answerable",
+      "question": "What fee range does Savvy charge, and how often are fees billed?",
+      "refused": false,
+      "refusal_reason": null,
+      "answer_text": "Savvy's asset-based investment management fees are negotiable and typically range between 0.30%-1.9% per year, depending on the size and complexity of the client account, among other factors. These asset-based fees are billed either quarterly or monthly, in arrears or in advance, based on the ending value of the previous quarter or month or average daily balance during the billing cycle, as agreed upon by Savvy and the client. In some cases, Savvy charges investment management fees based on a percentage of the client's net worth, and these fees are negotiable and typically range between 0.10%-0.40%. Net worth-based fees are calculated once a year on net worth value and billed quarterly, in advance, in equal installments. Clients can also be charged an annual fixed fee for investment management services, negotiated based on the size and complexity of the relationship and charged based on the frequency stated in the agreement with the client. Fees for financial planning and consulting services are generally billed on a flat rate, are negotiable, and are assessed quarterly. Savvy charges a flat fee of $895 for tax preparation services, separate from and in addition to the asset-based fees. Clients can be charged an additional fee of 0.39% for direct indexing, in addition to the advisory fee, and this fee may be waived at Savvy's discretion. For ERISA Plan Clients, the annual fee is based on a percentage of included plan assets and is payable quarterly in advance or in arrears.",
+      "retrieved_chunk_ids": [
+        "savvy-p9-0",
+        "savvy-p9-1",
+        "savvy-p10-2",
+        "savvy-p10-1",
+        "savvy-p12-1",
+        "savvy-p30-2"
+      ],
+      "retrieval_hit": true,
+      "correctness": 1.0,
+      "correctness_reasons": [
+        "present 'typically 0.30% to 1.9% per year': \"typically range between 0.30%-1.9% per year\"",
+        "present 'negotiable': \"fees are negotiable\"",
+        "present 'billed quarterly or monthly': \"billed either quarterly or monthly\"",
+        "present 'in arrears or in advance, as agreed with the client': \"in arrears or in advance, based on the ending value of the previous quarter or month or average daily balance during the billing cycle, as agreed upon by Savvy and the client\""
+      ],
+      "faithfulness": 1.0,
+      "faithfulness_reasons": [],
+      "invalid_citations": 0,
+      "total_citations": 9,
+      "latency_ms": 14709.38750001369,
+      "cost_usd": 0.018688
+    }
+  ]
+}

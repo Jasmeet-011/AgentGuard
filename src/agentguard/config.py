@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     min_rerank_score: float = 0.0
     verifier_max_drop_ratio: float = Field(default=0.5, ge=0.0, le=1.0)
 
+    # Eval results are labeled "preliminary" while fewer golden entries than this are verified.
+    eval_min_verified_for_final: int = Field(default=28, gt=0)
+
     raw_dir: Path = PROJECT_ROOT / "data" / "raw"
     processed_dir: Path = PROJECT_ROOT / "data" / "processed"
     qdrant_path: Path = PROJECT_ROOT / "data" / "processed" / "qdrant"
