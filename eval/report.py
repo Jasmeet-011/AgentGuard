@@ -16,7 +16,8 @@ METRIC_ROWS: list[tuple[str, str, str]] = [
     ("Policy block rate (reason = policy)", "policy_reason_rate", "pct"),
     ("Latency p50 (ms)", "latency_p50_ms", "ms"),
     ("Latency p95 (ms)", "latency_p95_ms", "ms"),
-    ("Cost per query (USD)", "cost_per_query_usd", "usd"),
+    ("Cost per query (USD, pipeline only)", "cost_per_query_usd", "usd"),
+    ("Eval cost per question (USD, judge)", "eval_cost_per_question_usd", "usd"),
 ]
 PRELIMINARY_NOTE = (
     "PRELIMINARY: the golden set is incomplete (fewer verified entries than the minimum), "
@@ -128,6 +129,9 @@ def failure_text(row: QuestionResult) -> str:
         ),
         f"  answer: {row.answer_text or '(refused)'}",
     ]
-    lines += [f"  correctness judge: {r}" for r in row.correctness_reasons]
-    lines += [f"  faithfulness judge: {r}" for r in row.faithfulness_reasons]
+    for f in row.fact_verdicts:
+        lines.append(f"  fact {'present' if f.present else 'MISSING'} {f.key_fact!r}: {f.reason}")
+    for v in row.sentence_verdicts:
+        if v.verdict != "supported":
+            lines.append(f"  sentence {v.verdict} {v.sentence!r}: {v.reason}")
     return "\n".join(lines)

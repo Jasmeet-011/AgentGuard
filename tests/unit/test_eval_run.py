@@ -66,7 +66,9 @@ class FakeLLM:
         self, model: str, system: str, user: str, output_model: type, trace: Trace, node: str
     ) -> Any:
         self.calls.append((node, user))
-        trace.events.append(TraceEvent(node=node, started_at=datetime.now(UTC)))
+        trace.events.append(
+            TraceEvent(node=node, started_at=datetime.now(UTC), duration_ms=9000, cost_usd=0.5)
+        )
         if output_model is CorrectnessVerdicts:
             return CorrectnessVerdicts(
                 verdicts=[
@@ -100,12 +102,14 @@ class FakePipeline:
         self.resources = type("R", (), {"llm": llm})()
         self._answer = answer
         self.overrides: list[dict[str, object]] = []
+        self.questions_run: list[str] = []
 
     def with_overrides(self, **updates: object) -> "FakePipeline":
         self.overrides.append(updates)
         return self
 
     def run(self, question: str) -> tuple[Answer, Trace]:
+        self.questions_run.append(question)
         trace = Trace(query_id="p")
         trace.events.append(
             TraceEvent(node="generate", started_at=datetime.now(UTC), duration_ms=5, cost_usd=0.01)
@@ -141,6 +145,9 @@ def test_run_variant_scores_a_question_and_marks_the_run_preliminary() -> None:
     pipeline = FakePipeline(FakeLLM([True, False]), make_answer())
     run = run_variant("baseline", "dev", pipeline, settings(), golden_entries())  # type: ignore[arg-type]
     assert pipeline.overrides == [VARIANTS["baseline"]]
+    # One untimed warm-up query, then the one verified question; the warm-up is not a row.
+    assert pipeline.questions_run == ["Fee?", "Fee?"]
+    assert len(run.rows) == 1
     assert run.preliminary  # 1 verified < 28
     assert (run.verified_in_file, run.unverified_skipped) == (1, 1)
     assert [r.id for r in run.rows] == ["q0"]  # the unverified entry was not run
@@ -148,7 +155,12 @@ def test_run_variant_scores_a_question_and_marks_the_run_preliminary() -> None:
     assert row.retrieval_hit is True
     assert row.correctness == 0.5
     assert row.faithfulness == 1.0
+    # Pipeline latency and cost exclude the judge's events (9000 ms, $0.5 each, 2 calls).
     assert (row.latency_ms, row.cost_usd) == (5, 0.01)
+    assert row.judge_cost_usd == 1.0
+    assert [f.present for f in row.fact_verdicts] == [True, False]
+    assert row.sentence_verdicts[0].verdict == "supported"
+    assert run.aggregate.eval_cost_per_question_usd == 1.0
     assert not is_failure(row)  # correctness 0.5 is not < 0.5, faithfulness is 1.0
 
 
@@ -158,7 +170,8 @@ def test_refused_answerable_scores_zero_without_calling_the_judge() -> None:
     run = run_variant("baseline", "dev", pipeline, settings(), golden_entries())  # type: ignore[arg-type]
     assert run.rows[0].correctness == 0.0
     assert run.rows[0].faithfulness is None
-    assert llm.calls == []
+    assert [n for n, _ in llm.calls] == []  # no judge call
+    assert run.rows[0].judge_cost_usd == 0.0
     assert is_failure(run.rows[0])
 
 

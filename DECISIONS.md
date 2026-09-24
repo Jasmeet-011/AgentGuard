@@ -519,3 +519,33 @@ in an editable install. `make eval` calls the CLI.
 - `eval_min_verified_for_final = 28` in config decides the "preliminary" label (PLAN.md's M5
   acceptance threshold).
 - Variant `dense_only` from PLAN.md is named `dense` (Jasmeet's instruction).
+
+## M6 fixes (Jasmeet's review)
+
+- **Judge events and the pipeline trace.** They were already separate: `evaluate_question`
+  runs `pipeline.run`, which owns its own `Trace`, and the judge records into a second
+  `Trace(query_id="judge-{id}")`. Nothing from the judge reached `latency_and_cost`. The
+  first version simply never reported the judge's cost. Now `QuestionResult.judge_cost_usd`
+  (from the judge trace, using original cost on cache hits) and
+  `Aggregate.eval_cost_per_question_usd` (mean over every question in the run, 0 for those
+  needing no judge call) are reported as "Eval cost per question (USD, judge)". "Cost per
+  query" is labeled pipeline only. Unit tests: a metrics test with a pipeline trace and a
+  judge trace with large judge numbers, and a run-level test where the fake judge costs
+  $0.5 and 9000 ms per call and the row's latency and cost stay the pipeline's.
+- **Warm-up.** `run_variant` runs the first selected question through the variant's
+  pipeline once, untimed, before the timed loop (test: it is run twice, one row). The
+  reranker is not lazy in the pipeline path: `Resources.load` constructs `Reranker`, whose
+  `__init__` loads the CrossEncoder. (The lazy load recorded in M3 was in
+  `Retriever.from_settings`, used by `agentguard search`.) So no change to `Resources.load`;
+  the cold cost was the first inference, not the load. Baseline p50 on two back-to-back
+  runs after the fix: 7394 ms and 6989 ms (before: 7124 and 12694). The residual 5% spread
+  is live retrieval timing.
+- **Comparison recall, stronger reading.** For each expected firm, at least one retrieved
+  chunk must match one of that firm's expected sources (firm + doc_type + item), on top of
+  the `match` rule. This replaces the weaker reading recorded above ("any chunk of that
+  firm"). Tests: a firm present with the wrong item is now a miss.
+- **Judge verdicts stored in full.** `QuestionResult` now keeps `fact_verdicts` (key fact,
+  present, reason) and `sentence_verdicts` (sentence, verdict, reason) for every judged
+  answer, replacing the old reason-string lists, so the results JSON can be spot-checked.
+- The earlier preliminary result files were removed and regenerated: their recall used the
+  old comparison rule and their schema lacks the new fields.

@@ -416,8 +416,7 @@ M5 can be marked DONE.
   entries are verified. Every table then carries a PRELIMINARY note.
 - `Pipeline.resources` property added so the judge shares the pipeline's `LLMClient`.
 
-**Test results:** `make check` -> ruff clean, 246 unit tests passed (39 new: golden 18,
-metrics 15, judge/run/report 6).
+**Test results:** `make check` -> ruff clean, 248 unit tests passed.
 
 **Eval output (dev, PRELIMINARY: 2 verified answerable questions, nothing else):** see
 `eval/results/latest_comparison.md`. All three variants scored 100% recall, correctness and
@@ -427,15 +426,17 @@ harness runs end to end.
 
 | Metric | baseline | dense | hybrid |
 |---|---|---|---|
-| Latency p50 (ms) | 12694 | 3113 | 4762 |
-| Cost per query (USD) | $0.0159 | $0.0130 | $0.0151 |
+| Latency p50 (ms) | 6989 | 3116 | 4773 |
+| Pipeline cost per query | $0.0159 | $0.0130 | $0.0151 |
+| Eval (judge) cost per question | $0.0318 | $0.0124 | $0.0162 |
 
-**Reproducibility check:** baseline on dev run twice. Every metric was identical except
-latency: retrieval is timed live and is not cached (baseline p50 was 7124 ms on the first
-run, 12694 ms on the second; the LLM parts are replayed from cache). So "identical numbers"
-holds for everything but retrieval latency. The judge needed one corrective retry (the
-model returned the verdict list as a JSON string); `llm.py` recovered it, and the retry is
-in the cached entry.
+**Review fixes (see DECISIONS.md "M6 fixes"):** judge calls already used a separate trace;
+judge cost is now reported separately (eval cost per question). Each variant runs one untimed
+warm-up query first. Baseline p50 on two runs after the fix: 7394 ms and 6989 ms (before:
+7124 and 12694). Everything except retrieval latency is identical between runs (cache). Comparison
+recall uses the stronger per-firm reading. Full judge verdicts are stored in the results JSON.
+The judge needed one corrective retry once (the model returned the verdict list as a JSON
+string); `llm.py` recovered it.
 
 **Not done (acceptance):** Jasmeet has not yet spot-checked 3 judge verdicts, and the full
 golden set does not exist. The judge prompts are printed in the report for review.

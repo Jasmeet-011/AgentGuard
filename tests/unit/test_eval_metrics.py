@@ -64,10 +64,19 @@ def test_match_all_needs_every_source() -> None:
     assert metrics.retrieval_hit([chunk("savvy", 5), chunk("savvy", 7)], entry)
 
 
-def test_comparison_needs_a_chunk_from_every_expected_firm() -> None:
+def test_comparison_needs_a_matching_chunk_for_every_expected_firm() -> None:
     entry = golden([("savvy", 5), ("facet", 5)])
+    # Only one firm represented, even with a matching item for it.
     assert not metrics.retrieval_hit([chunk("savvy", 5), chunk("savvy", 7)], entry)
-    assert metrics.retrieval_hit([chunk("savvy", 5), chunk("facet", 9)], entry)
+    # Both firms present, but the facet chunk is the wrong item: not a hit for facet.
+    assert not metrics.retrieval_hit([chunk("savvy", 5), chunk("facet", 9)], entry)
+    assert metrics.retrieval_hit([chunk("savvy", 5), chunk("facet", 5)], entry)
+
+
+def test_comparison_with_match_any_still_needs_every_firm() -> None:
+    entry = golden([("savvy", 5), ("savvy", 7), ("facet", 5)], match="any")
+    assert not metrics.retrieval_hit([chunk("savvy", 7), chunk("savvy", 5)], entry)
+    assert metrics.retrieval_hit([chunk("savvy", 7), chunk("facet", 5)], entry)
 
 
 def test_empty_retrieval_is_a_miss() -> None:
@@ -124,6 +133,15 @@ def test_latency_and_cost_use_original_values_on_cache_hits() -> None:
         event("finalize", duration_ms=1.0, cost_usd=0.002),
     ]
     assert metrics.latency_and_cost(trace) == (3101.0, pytest.approx(0.012))
+
+
+def test_judge_events_in_their_own_trace_do_not_affect_pipeline_latency_and_cost() -> None:
+    pipeline_trace = Trace(query_id="p")
+    pipeline_trace.events = [event("generate", duration_ms=40.0, cost_usd=0.01)]
+    judge_trace = Trace(query_id="judge-q")
+    judge_trace.events = [event("judge_correctness", duration_ms=9000.0, cost_usd=0.5)]
+    assert metrics.latency_and_cost(pipeline_trace) == (40.0, 0.01)
+    assert metrics.latency_and_cost(judge_trace) == (9000.0, 0.5)
 
 
 def answer(sentences: list[CitedSentence]) -> Answer:
@@ -184,6 +202,7 @@ def test_aggregate_computes_each_rate_over_its_own_question_type() -> None:
     assert agg.policy_block_rate == 1.0
     assert agg.policy_reason_rate == 0.5
     assert agg.invalid_citation_rate == 0.25
+    assert agg.eval_cost_per_question_usd == 0.0
 
 
 def test_aggregate_of_all_refused_answerables_has_no_faithfulness() -> None:

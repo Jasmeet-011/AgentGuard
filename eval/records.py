@@ -7,6 +7,22 @@ from pydantic import BaseModel, Field
 from eval.golden import EntryType
 
 
+class FactVerdictRecord(BaseModel):
+    """The correctness judge's verdict on one key fact."""
+
+    key_fact: str
+    present: bool
+    reason: str
+
+
+class SentenceVerdictRecord(BaseModel):
+    """The faithfulness judge's verdict on one answer sentence."""
+
+    sentence: str
+    verdict: str
+    reason: str
+
+
 class QuestionResult(BaseModel):
     """Everything measured for one golden question under one variant."""
 
@@ -20,15 +36,17 @@ class QuestionResult(BaseModel):
     # answerable only
     retrieval_hit: bool | None = None
     correctness: float | None = None
-    correctness_reasons: list[str] = Field(default_factory=list)
+    fact_verdicts: list[FactVerdictRecord] = Field(default_factory=list)
     # answerable and not refused only
     faithfulness: float | None = None
-    faithfulness_reasons: list[str] = Field(default_factory=list)
-    # all questions
+    sentence_verdicts: list[SentenceVerdictRecord] = Field(default_factory=list)
+    # all questions. latency_ms and cost_usd are the pipeline's only; judge calls run on a
+    # separate trace and are reported as judge_cost_usd.
     invalid_citations: int = 0
     total_citations: int = 0
     latency_ms: float = 0.0
     cost_usd: float = 0.0
+    judge_cost_usd: float = 0.0
 
 
 class Aggregate(BaseModel):
@@ -48,6 +66,8 @@ class Aggregate(BaseModel):
     latency_p50_ms: float | None
     latency_p95_ms: float | None
     cost_per_query_usd: float | None
+    # Judge cost averaged over every question (0 for questions that need no judge call).
+    eval_cost_per_question_usd: float | None
 
 
 class RunResult(BaseModel):

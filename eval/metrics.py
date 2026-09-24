@@ -24,15 +24,22 @@ def retrieval_hit(retrieved: Sequence[Chunk], entry: GoldenEntry) -> bool:
     """Did retrieval surface the expected evidence for `entry`?
 
     match="any": one expected source hit suffices; "all": every expected source must be hit.
-    A comparison (expected sources from more than one firm) additionally needs at least one
-    retrieved chunk from every expected firm, whatever its item.
+    A comparison (expected sources from more than one firm) additionally needs, for every
+    expected firm, a retrieved chunk matching one of that firm's expected sources.
     """
     hits = [any(source_hit(c, s) for c in retrieved) for s in entry.expected_sources]
     matched = all(hits) if entry.match == "all" else any(hits)
     firms = entry.expected_firms
     if len(firms) > 1:
-        retrieved_firms = {c.doc_id for c in retrieved}
-        matched = matched and all(firm in retrieved_firms for firm in firms)
+        matched = matched and all(
+            any(
+                source_hit(c, s)
+                for c in retrieved
+                for s in entry.expected_sources
+                if s.firm == firm
+            )
+            for firm in firms
+        )
     return matched
 
 
@@ -127,4 +134,5 @@ def aggregate(rows: Sequence[QuestionResult]) -> Aggregate:
         latency_p50_ms=percentile(latencies, 50),
         latency_p95_ms=percentile(latencies, 95),
         cost_per_query_usd=mean([r.cost_usd for r in rows]),
+        eval_cost_per_question_usd=mean([r.judge_cost_usd for r in rows]),
     )

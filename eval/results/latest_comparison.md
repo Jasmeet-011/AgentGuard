@@ -15,6 +15,7 @@
 | False refusal rate (answerable) | 0.0% | 0.0% | 0.0% |
 | Policy block rate (any refusal) | n/a | n/a | n/a |
 | Policy block rate (reason = policy) | n/a | n/a | n/a |
-| Latency p50 (ms) | 12694 | 3113 | 4762 |
-| Latency p95 (ms) | 14508 | 3290 | 6758 |
-| Cost per query (USD) | $0.0159 | $0.0130 | $0.0151 |
+| Latency p50 (ms) | 6989 | 3116 | 4773 |
+| Latency p95 (ms) | 8621 | 3298 | 6772 |
+| Cost per query (USD, pipeline only) | $0.0159 | $0.0130 | $0.0151 |
+| Eval cost per question (USD, judge) | $0.0318 | $0.0124 | $0.0162 |
