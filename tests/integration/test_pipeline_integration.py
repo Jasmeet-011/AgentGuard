@@ -3,11 +3,12 @@
 import pytest
 
 from agentguard.config import Settings
-from agentguard.graph import run_pipeline
+from agentguard.pipeline import Pipeline, run_pipeline
 
 
 def settings() -> Settings:
-    return Settings()
+    # Cache off: these tests assert on real usage (nonzero cost), which a cache hit zeroes out.
+    return Settings(enable_llm_cache=False)
 
 
 @pytest.mark.integration
@@ -44,3 +45,14 @@ def test_unanswerable_question_is_refused() -> None:
     assert answer.refusal_reason == "insufficient_evidence"
     assert answer.refusal_message
     assert answer.sentences == []
+
+
+@pytest.mark.integration
+def test_pipeline_reused_across_questions_and_a_retrieval_mode_override() -> None:
+    pipeline = Pipeline.from_settings(settings())
+    first, _ = pipeline.run("What is Savvy's minimum account size?")
+    assert first.refused is False
+
+    dense_pipeline = pipeline.with_overrides(retrieval_mode="dense")
+    second, _ = dense_pipeline.run("What fees does Fisher Investments charge?")
+    assert second.retrieved  # dense mode still returns candidates over the real index

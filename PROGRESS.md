@@ -322,10 +322,9 @@ Betterment wrap appendix, and cross-firm questions is left to M6 to measure.
     information about the CEO's personal preferences, such as a favorite
     restaurant."
 
-**Deferred:** Nothing from M4's task list. `run_pipeline` builds a fresh `Retriever`
-+ `LLMClient` + `Generator` on every call (no shared/cached instances across
-queries); fine for the CLI's one-shot use, revisit if M6's eval harness needs to
-loop over many questions without reloading models each time.
+**Deferred:** Nothing from M4's task list. (The note that used to be here, about
+`run_pipeline` reloading models on every call, is resolved by the `Pipeline`/
+`Resources` addition below.)
 
 **Non-obvious decisions:** see DECISIONS.md (M4 entries): unimplemented-node flags
 default off and fail loudly; baseline refusal reason; new `partial_note` field;
@@ -340,6 +339,28 @@ mapping, and added unit tests in `test_models.py`, `test_agents_generator.py`, a
 `test_graph.py`. Manually verified: "Should my 60-year-old client move her IRA to
 Savvy?" -> `Refused (policy)`. `make check` (193 passed) and `make test-int` (6 passed)
 both green. See DECISIONS.md.
+
+**M4 addition (post-commit): `Pipeline` with shared `Resources`.** New
+`src/agentguard/pipeline.py`: `Resources` (frozen dataclass: `embedder`,
+`qdrant_client`, `bm25`, `reranker`, `firms`, `llm`), loaded once by
+`Resources.load`; `Pipeline(settings, resources)` wraps them into a `Retriever`
++ `Generator` + compiled graph without loading anything; `Pipeline.from_settings`,
+`Pipeline.run(question)`, and `Pipeline.with_overrides(**updates)` (shares
+`Resources`, restricted to a 14-field allowlist, `ValueError` naming the field
+otherwise). `graph.run_pipeline` moved to `pipeline.run_pipeline` (thin wrapper
+over `Pipeline`) to avoid an import cycle; `graph.build_graph` unchanged; `cli.py`
+now imports `run_pipeline` from `agentguard.pipeline`. See DECISIONS.md for the
+full field-by-field reasoning.
+
+Test results: `make check` -> ruff clean, 202 unit tests passed (9 new in
+`test_pipeline.py`: two `run()` calls plus a `with_overrides(retrieval_mode=
+"dense")` run load each of the 6 resources exactly once; `with_overrides` shares
+the same `Resources` instance and applies allowed fields; 5 resource-level
+fields parametrized to confirm they raise `ValueError` without loading anything
+again; `ALLOWED_OVERRIDE_FIELDS` matches the spec). `make test-int` -> 7 passed
+(renamed `test_pipeline_integration.py`, cache disabled per-test to avoid a
+cached-cost false negative; added a real `Pipeline` reuse + `with_overrides`
+test). Manual `agentguard ask` run confirmed the CLI still works unchanged.
 
 ---
 

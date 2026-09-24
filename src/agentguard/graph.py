@@ -1,6 +1,10 @@
-"""The LangGraph pipeline: retrieve -> generate -> finalize, built from config flags."""
+"""The LangGraph pipeline: retrieve -> generate -> finalize, built from config flags.
 
-import uuid
+`build_graph` is deliberately dumb: it wires nodes around a `Retriever` and `Generator`
+it is handed. `pipeline.Pipeline` is what actually builds those (from shared, load-once
+`Resources`) and runs the graph for a question.
+"""
+
 from typing import Literal, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -8,7 +12,6 @@ from langgraph.graph.state import CompiledStateGraph
 
 from agentguard.agents.generator import Generator
 from agentguard.config import Settings
-from agentguard.llm import LLMClient
 from agentguard.models import Answer, GeneratorOutput, RetrievedChunk, Trace
 from agentguard.retrieval.retriever import Retriever
 
@@ -96,22 +99,3 @@ def build_graph(
     graph.add_edge("generate", "finalize")
     graph.add_edge("finalize", END)
     return graph.compile()
-
-
-def run_pipeline(question: str, settings: Settings) -> tuple[Answer, Trace]:
-    """Build the real retriever, LLM client, and generator, then answer `question` once."""
-    retriever = Retriever.from_settings(settings)
-    generator = Generator(settings, LLMClient(settings))
-    graph = build_graph(settings, retriever, generator)
-    trace = Trace(query_id=uuid.uuid4().hex)
-    initial: PipelineState = {
-        "question": question,
-        "trace": trace,
-        "retrieved": [],
-        "generator_output": None,
-        "answer": None,
-    }
-    result = graph.invoke(initial)
-    answer = result["answer"]
-    assert answer is not None  # finalize_node always sets it
-    return answer, trace

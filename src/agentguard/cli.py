@@ -9,10 +9,10 @@ from rich.console import Console
 from rich.table import Table
 
 from agentguard.config import Settings
-from agentguard.graph import run_pipeline
 from agentguard.ingest.index import IndexSummary, build_indexes
 from agentguard.ingest.pipeline import DocSummary, ingest_corpus, write_chunks
 from agentguard.models import Answer, Chunk, RetrievedChunk, Trace
+from agentguard.pipeline import run_pipeline
 from agentguard.retrieval.retriever import RetrievalMode, Retriever
 
 app = typer.Typer(help="AgentGuard: verified research over Form ADV brochures.")

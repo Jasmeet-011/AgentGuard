@@ -391,6 +391,48 @@ An advice-request refusal (rule 7) now reports `refusal_reason="policy"` even th
 there is still no M8 policy_guard node — the reason reflects why the baseline generator
 refused, not which node did it.
 
+## M4: Pipeline with shared Resources for eval and UI reuse (Jasmeet's spec)
+
+`run_pipeline` (originally in `graph.py`) built a fresh `Retriever` (embedder,
+Qdrant client, BM25 index, reranker) and `LLMClient` on every call — fine for one
+CLI invocation, wasteful for M6's eval harness (many questions x many variants)
+and M10's Streamlit app (must not reload models per click). Jasmeet's fix, in a
+new `src/agentguard/pipeline.py`:
+
+- `Resources` (frozen dataclass): `embedder`, `qdrant_client`, `bm25`
+  (`SparseSearcher`), `reranker`, `firms`, `llm` (`LLMClient`). `Resources.load`
+  is the only place any of these six are constructed.
+- `Pipeline(settings, resources)`: wraps `resources` into a `Retriever` (with a
+  fresh `DenseSearcher` and freshly reread `chunks.jsonl` — cheap I/O, not a
+  model load, so not part of `Resources`) and `Generator`, and compiles the graph
+  via `graph.build_graph` (unchanged). No model loading.
+- `Pipeline.from_settings(settings)` = `Pipeline(settings, Resources.load(settings))`.
+- `Pipeline.run(question)` — same signature/behavior as the old `run_pipeline`.
+- `Pipeline.with_overrides(**updates)`: a new `Pipeline` on
+  `settings.model_copy(update=updates)`, reusing `self._resources`. Restricted to
+  `ALLOWED_OVERRIDE_FIELDS` (retrieval knobs, the three unimplemented-node flags,
+  `min_rerank_score`, `verifier_max_drop_ratio`, and the four `*_model` name
+  fields) — a whitelist, not a blocklist, so any Settings field added later
+  defaults to refused rather than silently mis-applied. Anything else (paths,
+  `embedding_model`, `embedding_query_prefix`, `reranker_model`,
+  `anthropic_api_key`, `enable_llm_cache`, `llm_temperature`, `llm_max_tokens`,
+  `llm_retry_attempts`) raises `ValueError` naming the field — changing a
+  `*_model` name is cheap (just a different string sent per call on the shared
+  `LLMClient`), but `embedding_model`/`reranker_model`/`embedding_query_prefix`
+  are baked into the already-loaded `Embedder`/`Reranker` objects and cannot be
+  swapped without reloading them, so they are refused even though only
+  `embedding_model`/`reranker_model` were named explicitly in the instruction.
+- `graph.run_pipeline` moved to `pipeline.run_pipeline` (thin wrapper:
+  `Pipeline.from_settings(settings).run(question)`) to avoid a `pipeline.py` <->
+  `graph.py` import cycle (`Pipeline` needs `build_graph`). `graph.build_graph`
+  itself is unchanged. `cli.py`'s `agentguard ask` now imports `run_pipeline`
+  from `agentguard.pipeline`.
+- `tests/integration/test_graph_integration.py` renamed to
+  `test_pipeline_integration.py` and its `settings()` helper switched to
+  `enable_llm_cache=False`: `total_cost_usd > 0` had gone flaky once "What is
+  Savvy's minimum account size?" got cached from earlier manual `ask` runs,
+  the same reason `test_llm_integration.py` already disables the cache.
+
 ## M4: Context block sent to the generator
 
 Jasmeet's M4 instruction: show chunk_id, firm name, doc_type, item number and
