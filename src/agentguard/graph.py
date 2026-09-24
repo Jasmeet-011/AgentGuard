@@ -1,4 +1,4 @@
-"""The LangGraph pipeline: retrieve -> generate -> finalize, built from config flags.
+"""The LangGraph pipeline: retrieve -> generate -> [verify] -> finalize, from config flags.
 
 `build_graph` is deliberately dumb: it wires nodes around a `Retriever` and `Generator`
 it is handed. `pipeline.Pipeline` is what actually builds those (from shared, load-once
@@ -11,14 +11,21 @@ from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from agentguard.agents.generator import Generator
+from agentguard.agents.verifier import Verifier
 from agentguard.config import Settings
-from agentguard.models import Answer, GeneratorOutput, RetrievedChunk, Trace
+from agentguard.models import (
+    Answer,
+    CitedSentence,
+    GeneratorOutput,
+    RetrievedChunk,
+    Trace,
+    VerificationResult,
+)
 from agentguard.retrieval.retriever import Retriever
 
 # Which milestone adds the node behind each not-yet-implemented flag.
 UNIMPLEMENTED_NODES: dict[str, str] = {
     "enable_policy_guard": "M8 (policy_guard node)",
-    "enable_verifier": "M7 (verify node)",
     "enable_score_threshold": "M9 (threshold_check node)",
 }
 
@@ -30,6 +37,9 @@ class PipelineState(TypedDict):
     trace: Trace
     retrieved: list[RetrievedChunk]
     generator_output: GeneratorOutput | None
+    verification: list[VerificationResult]
+    removed_sentences: list[CitedSentence]
+    verifier_rejected: bool
     answer: Answer | None
 
 
@@ -52,28 +62,35 @@ _REFUSAL_REASON: dict[str | None, Literal["policy", "insufficient_evidence"]] = 
 }
 
 
-def _build_answer(
-    question: str, retrieved: list[RetrievedChunk], output: GeneratorOutput
-) -> Answer:
+def _build_answer(state: PipelineState, output: GeneratorOutput) -> Answer:
+    if state["verifier_rejected"]:
+        reason: Literal["policy", "insufficient_evidence", "verifier_rejected"] | None = (
+            "verifier_rejected"
+        )
+    elif output.refused:
+        reason = _REFUSAL_REASON[output.refusal_kind]
+    else:
+        reason = None
     return Answer(
-        question=question,
+        question=state["question"],
         sentences=output.sentences,
         refused=output.refused,
-        refusal_reason=_REFUSAL_REASON[output.refusal_kind] if output.refused else None,
+        refusal_reason=reason,
         refusal_message=output.refusal_message,
         partial_note=output.partial_note,
-        retrieved=retrieved,
-        verification=[],
-        removed_sentences=[],
+        retrieved=state["retrieved"],
+        verification=state["verification"],
+        removed_sentences=state["removed_sentences"],
     )
 
 
 def build_graph(
-    settings: Settings, retriever: Retriever, generator: Generator
+    settings: Settings, retriever: Retriever, generator: Generator, verifier: Verifier
 ) -> CompiledStateGraph:
-    """Compile the baseline retrieve -> generate -> finalize graph.
+    """Compile retrieve -> generate -> [verify] -> finalize; `verify` only if enabled.
 
-    Raises `NotImplementedError` if a flag for a node not yet built (verify, policy_guard,
+    A generator refusal (or an empty answer) skips `verify`: there is nothing to check.
+    Raises `NotImplementedError` if a flag for a node not yet built (policy_guard,
     threshold_check) is enabled, naming the milestone that adds it.
     """
     _check_implemented(settings)
@@ -85,10 +102,32 @@ def build_graph(
         output = generator.generate(state["question"], state["retrieved"], state["trace"])
         return {"generator_output": output}
 
+    def verify_node(state: PipelineState) -> dict[str, object]:
+        output = state["generator_output"]
+        assert output is not None  # generate_node always sets it
+        outcome = verifier.verify(output.sentences, state["retrieved"], state["trace"])
+        if outcome.rejected:
+            output = GeneratorOutput(
+                sentences=[], refused=True, refusal_message=outcome.rejection_message
+            )
+        else:
+            output = output.model_copy(update={"sentences": outcome.kept})
+        return {
+            "generator_output": output,
+            "verification": outcome.verification,
+            "removed_sentences": outcome.removed,
+            "verifier_rejected": outcome.rejected,
+        }
+
     def finalize_node(state: PipelineState) -> dict[str, object]:
         output = state["generator_output"]
         assert output is not None  # generate_node always sets it
-        return {"answer": _build_answer(state["question"], state["retrieved"], output)}
+        return {"answer": _build_answer(state, output)}
+
+    def after_generate(state: PipelineState) -> Literal["verify", "finalize"]:
+        output = state["generator_output"]
+        has_sentences = output is not None and not output.refused and bool(output.sentences)
+        return "verify" if has_sentences else "finalize"
 
     graph = StateGraph(PipelineState)
     graph.add_node("retrieve", retrieve_node)
@@ -96,6 +135,11 @@ def build_graph(
     graph.add_node("finalize", finalize_node)
     graph.set_entry_point("retrieve")
     graph.add_edge("retrieve", "generate")
-    graph.add_edge("generate", "finalize")
+    if settings.enable_verifier:
+        graph.add_node("verify", verify_node)
+        graph.add_conditional_edges("generate", after_generate)
+        graph.add_edge("verify", "finalize")
+    else:
+        graph.add_edge("generate", "finalize")
     graph.add_edge("finalize", END)
     return graph.compile()

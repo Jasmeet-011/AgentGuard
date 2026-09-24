@@ -549,3 +549,40 @@ in an editable install. `make eval` calls the CLI.
   answer, replacing the old reason-string lists, so the results JSON can be spot-checked.
 - The earlier preliminary result files were removed and regenerated: their recall used the
   old comparison rule and their schema lacks the new fields.
+
+## After M6: generator rule 10, answer only what is asked (Jasmeet's instruction)
+
+q006 ("fee range and how often billed") produced 9 sentences: the answer plus every other fee
+type in the chunks. Rule 10 asks for a directly relevant qualifier or closely related fact,
+and no other fee types, services, or topics. The first wording still added the net-worth-based
+fee (4 sentences); adding "when a passage describes a main arrangement and then alternatives
+or special cases, answer with the main arrangement only" brought it to 2. Tuned on a dev
+question only; the effect on correctness elsewhere is not measured yet.
+
+## M7: Verifier design
+
+- **Indexing.** Sentences are numbered from 1 in the prompt and `VerificationResult.
+  sentence_index` is that 1-based position in the generator's list (documented on the
+  model). Verdicts must cover exactly 1..n or `VerifierError` is raised; nothing is guessed.
+- **Unsupported removed, partial kept.** Removed sentences go to `Answer.removed_sentences`.
+  Partial ones stay in `sentences`; the mark lives in `Answer.verification` (one entry per
+  original sentence, including removed ones), and `Answer.kept_verification()` returns the
+  verdicts aligned with `sentences`. No new field on `CitedSentence`.
+- **Rejection.** Ratio removed/total strictly greater than `verifier_max_drop_ratio`, or no
+  sentence left, becomes a refusal with `refusal_reason="verifier_rejected"`, a plain message
+  saying how many sentences were removed, no sentences, and the removed ones still reported.
+  The second condition matters at `verifier_max_drop_ratio=1.0`, which would otherwise return
+  an empty answer that is not marked refused.
+- **Skipped when there is nothing to check.** A conditional edge sends a generator refusal or
+  empty sentence list straight to `finalize`, with no LLM call. `partial_note` from the
+  generator is kept when the verifier does not reject.
+- **`build_graph` takes the verifier as a required argument** (built by `Pipeline` from the
+  shared `LLMClient`); the node is added only when `enable_verifier` is on.
+- **Default flipped.** `enable_verifier=True` per PLAN.md's M0 table. Evals and tests that
+  mean "no verifier" set it False explicitly (all three earlier variants already do).
+- **Independence caveat.** The verifier and the faithfulness judge are both `claude-sonnet-5`
+  and both check sentences against cited chunks. The verifier prompt is worded independently
+  and adds a rule to prefer `unsupported` when a reader would be misled, but a verifier that
+  "helps faithfulness" partly grades itself with a similar model. Report faithfulness gains
+  with that caveat; the human-checked subset is the real ground truth.
+- **Cost/latency:** one extra call per answered question (about 2.3 s, $0.0075 on q006).

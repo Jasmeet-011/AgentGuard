@@ -15,7 +15,8 @@ from eval.records import FactVerdictRecord, QuestionResult, RunResult, SentenceV
 logger = logging.getLogger(__name__)
 
 # A variant is a named set of `Pipeline.with_overrides` fields. All optional components stay
-# off in these three; later milestones add "+verifier", "+policy", "+threshold" and "full".
+# off in these three; "+verifier" is the baseline plus the verifier. Later milestones add
+# "+policy", "+threshold" and "full".
 VARIANTS: dict[str, dict[str, object]] = {
     "dense": {
         "retrieval_mode": "dense",
@@ -32,6 +33,12 @@ VARIANTS: dict[str, dict[str, object]] = {
     "baseline": {
         "retrieval_mode": "hybrid_rerank",
         "enable_verifier": False,
+        "enable_policy_guard": False,
+        "enable_score_threshold": False,
+    },
+    "+verifier": {
+        "retrieval_mode": "hybrid_rerank",
+        "enable_verifier": True,
         "enable_policy_guard": False,
         "enable_score_threshold": False,
     },

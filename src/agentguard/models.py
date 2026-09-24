@@ -63,7 +63,10 @@ class CitedSentence(BaseModel):
 
 
 class VerificationResult(BaseModel):
-    """The verifier's verdict on one answer sentence."""
+    """The verifier's verdict on one answer sentence.
+
+    `sentence_index` is the sentence's 1-based position in the generator's sentence list.
+    """
 
     sentence_index: int
     verdict: Literal["supported", "partial", "unsupported"]
@@ -114,6 +117,15 @@ class Answer(BaseModel):
     retrieved: list[RetrievedChunk]
     verification: list[VerificationResult]
     removed_sentences: list[CitedSentence]
+
+    def kept_verification(self) -> list[VerificationResult]:
+        """Verdicts of the sentences that were kept, aligned one-to-one with `sentences`.
+
+        `verification` covers every sentence the generator wrote, including removed ones.
+        Empty when the verifier did not run or the answer was rejected.
+        """
+        kept = [v for v in self.verification if v.verdict != "unsupported"]
+        return kept if len(kept) == len(self.sentences) else []
 
 
 class TraceEvent(BaseModel):

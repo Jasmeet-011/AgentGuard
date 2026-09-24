@@ -9,7 +9,7 @@
 | M4. Generator and baseline pipeline | DONE |
 | M5. Golden dataset | IN PROGRESS (code done; dataset is being built by Jasmeet) |
 | M6. Eval harness and baseline numbers | IN PROGRESS (harness done; numbers preliminary; judge spot-check pending) |
-| M7. Verifier agent | TODO |
+| M7. Verifier agent | IN PROGRESS (code and tests done; eval waits for the full golden set) |
 | M8. Policy guard | TODO |
 | M9. Evidence threshold and final test-set run | TODO |
 | M10. Streamlit UI: Ask tab | TODO |
@@ -438,11 +438,74 @@ recall uses the stronger per-firm reading. Full judge verdicts are stored in the
 The judge needed one corrective retry once (the model returned the verdict list as a JSON
 string); `llm.py` recovered it.
 
-**Not done (acceptance):** Jasmeet has not yet spot-checked 3 judge verdicts, and the full
-golden set does not exist. The judge prompts are printed in the report for review.
+**Judge spot-check: PASSED.** Jasmeet read the full verdicts for q005 (2 key facts, 2
+sentences) and q006 (4 key facts, 9 sentences) and agreed with all of them.
+
+**Not done (acceptance):** the full golden set does not exist yet, so M6's numbers stay
+preliminary.
 
 **Deferred:** Nothing from M6's task list. The `test` split and non-answerable metrics
 cannot be exercised on real data until the dataset arrives.
+
+---
+
+## Generator prompt: answer only what is asked (after M6)
+
+Rule 10 added to `generator_system.md`: answer only what the question asks; include a
+qualifier that bears directly on the answer and a closely related fact from the same
+passage, but no other fee types, services or topics; when a passage gives a main
+arrangement and then alternatives or special cases, answer with the main arrangement unless
+asked about the alternatives. q006 rerun with the cache bypassed:
+- Before: 9 sentences (also net-worth fees, fixed fees, planning fees, $895 tax prep, 0.39%
+  direct indexing, ERISA).
+- First wording of the rule: 4 sentences (still added the net-worth-based fee).
+- Final wording: 2 sentences, the 0.30% to 1.9% range with "negotiable", and billing
+  quarterly or monthly, in arrears or in advance, as agreed with the client.
+The rule was tuned on q006, a dev question. Its effect on other questions is unmeasured
+until the golden set is complete (fewer sentences could also lower correctness).
+
+---
+
+## M7 details (code only; the eval waits for the full golden set)
+
+**What was built:**
+- `prompts/verifier_system.md`: strict claim-level check of each sentence against only its
+  cited chunks; `supported` / `partial` / `unsupported`; numbers, percentages, dollar
+  amounts and names must match exactly; a fact belonging to another firm is `unsupported`.
+  Written independently of the judge prompt (see DECISIONS.md).
+- `agents/verifier.py`: `Verifier.verify` makes one batched structured call for all
+  sentences. `apply_verdicts` (pure) drops `unsupported` sentences into `removed`, keeps
+  `partial` and `supported`, and rejects the answer when the removed fraction exceeds
+  `verifier_max_drop_ratio` or nothing is left. It raises `VerifierError` if the verdicts do
+  not cover exactly sentences 1..n. Counts (checked, removed, partial, rejected) go on the
+  `verify` trace event.
+- `graph.py`: `verify` node behind `enable_verifier`, reached by a conditional edge from
+  `generate`; a generator refusal or empty answer skips it. A rejection becomes a refusal
+  with `refusal_reason="verifier_rejected"` and the sentences kept in `removed_sentences`.
+  `build_graph` now takes the `Verifier`; `Pipeline` builds one.
+  `Answer.verification` holds one verdict per original sentence, and
+  `Answer.kept_verification()` aligns verdicts with the kept sentences so partial ones can be
+  marked. `agentguard ask` marks partial sentences and lists removed ones with the reason.
+- `enable_verifier` now defaults to True. `enable_policy_guard` and `enable_score_threshold`
+  stay False and still raise `NotImplementedError` if turned on.
+- Eval variant `+verifier` (baseline plus verifier) added to `VARIANTS`. Not run.
+
+**Test results:**
+- `make check` -> ruff clean, 267 unit tests passed. New: verifier logic (removal, partial
+  kept, out-of-order results, drop ratio at and above the limit, all-removed rejection,
+  coverage errors, user message contents, one batched call, configured ratio); graph
+  (verifier off never called, on removes and records, rejection reason, generator refusal
+  skips it, `verify` node exists only when enabled); config default.
+- `make test-int` -> 8 passed, including the new fabricated-number test: the generator's
+  output is monkeypatched to add "Savvy's minimum account size is $750,000 for all
+  clients, with no exceptions." citing a real chunk; the verifier removes it, the real
+  $500,000 sentence survives, and the removed sentence is reported.
+- Manual `agentguard ask` on q006: 2 sentences kept, verify node about 2.3 s and $0.0075 on
+  top of generate.
+
+**Deferred:** the M7 eval (`agentguard eval --variant baseline --variant +verifier`) and the
+faithfulness / correctness / latency / cost comparison PLAN.md asks for. It runs once the
+full golden set exists.
 
 ---
 

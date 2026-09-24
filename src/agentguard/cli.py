@@ -121,18 +121,32 @@ def _footnote_line(n: int, chunk: Chunk) -> str:
     return f"[{n}] {chunk.firm_name} | {chunk.doc_type} | {item} | {pages} | {chunk.chunk_id}"
 
 
+def _print_removed(answer: Answer) -> None:
+    unsupported = [v for v in answer.verification if v.verdict == "unsupported"]
+    if not answer.removed_sentences:
+        return
+    console.print("\n[red]Removed by verifier:[/red]")
+    for sentence, verdict in zip(answer.removed_sentences, unsupported, strict=True):
+        console.print(f"  - {sentence.text} [dim]({verdict.reason})[/dim]")
+
+
 def _print_answer(answer: Answer) -> None:
     if answer.refused:
         console.print(f"[red]Refused[/red] ({answer.refusal_reason}): {answer.refusal_message}")
+        _print_removed(answer)
         return
     chunks_by_id = {r.chunk.chunk_id: r.chunk for r in answer.retrieved}
     footnote_numbers: dict[str, int] = {}
-    for sentence in answer.sentences:
+    verdicts = answer.kept_verification()
+    for i, sentence in enumerate(answer.sentences):
         marks = []
         for chunk_id in sentence.citations:
             footnote_numbers.setdefault(chunk_id, len(footnote_numbers) + 1)
             marks.append(str(footnote_numbers[chunk_id]))
-        console.print(f"{sentence.text} [dim]^{','.join(marks)}[/dim]")
+        partial = verdicts and verdicts[i].verdict == "partial"
+        tag = " [yellow](partial)[/yellow]" if partial else ""
+        console.print(f"{sentence.text} [dim]^{','.join(marks)}[/dim]{tag}")
+    _print_removed(answer)
     if answer.partial_note:
         console.print(f"\n[yellow]Not covered by the documents:[/yellow] {answer.partial_note}")
     if footnote_numbers:

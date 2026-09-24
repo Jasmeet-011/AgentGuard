@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from qdrant_client import QdrantClient
 
 from agentguard.agents.generator import Generator
+from agentguard.agents.verifier import Verifier
 from agentguard.config import Settings
 from agentguard.graph import PipelineState, build_graph
 from agentguard.ingest.firms import load_firms
@@ -87,7 +88,8 @@ class Pipeline:
             settings, chunks, resources.firms, dense, resources.bm25, resources.reranker
         )
         generator = Generator(settings, resources.llm)
-        self._graph = build_graph(settings, retriever, generator)
+        verifier = Verifier(settings, resources.llm)
+        self._graph = build_graph(settings, retriever, generator, verifier)
 
     @property
     def resources(self) -> Resources:
@@ -107,6 +109,9 @@ class Pipeline:
             "trace": trace,
             "retrieved": [],
             "generator_output": None,
+            "verification": [],
+            "removed_sentences": [],
+            "verifier_rejected": False,
             "answer": None,
         }
         result = self._graph.invoke(initial)

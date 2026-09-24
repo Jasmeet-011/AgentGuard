@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 
+from agentguard.agents.verifier import VerificationOutcome
 from agentguard.config import Settings
 from agentguard.graph import UNIMPLEMENTED_NODES, build_graph
 from agentguard.models import (
@@ -13,11 +14,14 @@ from agentguard.models import (
     GeneratorOutput,
     RetrievedChunk,
     Trace,
+    VerificationResult,
 )
 
 
 def settings(**overrides: object) -> Settings:
-    return Settings(anthropic_api_key="sk-test", **overrides)
+    """Verifier off unless a test turns it on: most tests here are about the baseline graph."""
+    flags = {"enable_verifier": False} | overrides
+    return Settings(anthropic_api_key="sk-test", **flags)  # type: ignore[arg-type]
 
 
 def make_chunk(chunk_id: str = "acme-p7-0") -> Chunk:
@@ -58,12 +62,32 @@ class FakeGenerator:
         return self.output
 
 
+class FakeVerifier:
+    """Returns a canned outcome and records what it was asked to verify."""
+
+    def __init__(self, outcome: VerificationOutcome | None = None) -> None:
+        self.outcome = outcome
+        self.calls: list[list[CitedSentence]] = []
+
+    def verify(
+        self, sentences: list[CitedSentence], retrieved: list[RetrievedChunk], trace: Trace
+    ) -> VerificationOutcome:
+        self.calls.append(sentences)
+        assert self.outcome is not None
+        return self.outcome
+
+
 @pytest.mark.parametrize("flag", sorted(UNIMPLEMENTED_NODES))
 def test_enabling_an_unimplemented_node_raises_naming_its_milestone(flag: str) -> None:
     retrieved = [RetrievedChunk(chunk=make_chunk())]
     output = GeneratorOutput(refused=False, sentences=[])
     with pytest.raises(NotImplementedError) as exc_info:
-        build_graph(settings(**{flag: True}), FakeRetriever(retrieved), FakeGenerator(output))  # type: ignore[arg-type]
+        build_graph(
+            settings(**{flag: True}),
+            FakeRetriever(retrieved),
+            FakeGenerator(output),
+            FakeVerifier(),
+        )  # type: ignore[arg-type]
     assert flag in str(exc_info.value)
     assert UNIMPLEMENTED_NODES[flag] in str(exc_info.value)
 
@@ -71,12 +95,17 @@ def test_enabling_an_unimplemented_node_raises_naming_its_milestone(flag: str) -
 def test_default_settings_build_without_raising() -> None:
     retrieved = [RetrievedChunk(chunk=make_chunk())]
     output = GeneratorOutput(refused=False, sentences=[])
-    graph = build_graph(settings(), FakeRetriever(retrieved), FakeGenerator(output))  # type: ignore[arg-type]
+    graph = build_graph(settings(), FakeRetriever(retrieved), FakeGenerator(output), FakeVerifier())  # type: ignore[arg-type]
     assert graph is not None
 
 
-def _invoke(retriever: FakeRetriever, generator: FakeGenerator) -> Answer:
-    graph = build_graph(settings(), retriever, generator)  # type: ignore[arg-type]
+def _invoke(
+    retriever: FakeRetriever,
+    generator: FakeGenerator,
+    verifier: FakeVerifier | None = None,
+    **flags: object,
+) -> Answer:
+    graph = build_graph(settings(**flags), retriever, generator, verifier or FakeVerifier())  # type: ignore[arg-type]
     trace = Trace(query_id=uuid.uuid4().hex)
     result = graph.invoke(
         {
@@ -84,6 +113,9 @@ def _invoke(retriever: FakeRetriever, generator: FakeGenerator) -> Answer:
             "trace": trace,
             "retrieved": [],
             "generator_output": None,
+            "verification": [],
+            "removed_sentences": [],
+            "verifier_rejected": False,
             "answer": None,
         }
     )
@@ -163,3 +195,79 @@ def test_partial_note_carried_into_answer() -> None:
     answer = _invoke(retriever, generator)
 
     assert answer.partial_note == "Custody is not covered."
+
+
+def _verdicts(*verdicts: str) -> list[VerificationResult]:
+    return [
+        VerificationResult(sentence_index=i, verdict=v, reason="r")  # type: ignore[arg-type]
+        for i, v in enumerate(verdicts, start=1)
+    ]
+
+
+def _two_sentence_setup() -> tuple[FakeRetriever, FakeGenerator, list[CitedSentence]]:
+    chunk = make_chunk()
+    good = CitedSentence(text="Acme charges 1.25%.", citations=[chunk.chunk_id])
+    bad = CitedSentence(text="Acme charges 9%.", citations=[chunk.chunk_id])
+    retriever = FakeRetriever([RetrievedChunk(chunk=chunk)])
+    generator = FakeGenerator(GeneratorOutput(refused=False, sentences=[good, bad]))
+    return retriever, generator, [good, bad]
+
+
+def test_verifier_off_never_calls_the_verifier() -> None:
+    retriever, generator, sentences = _two_sentence_setup()
+    verifier = FakeVerifier()
+    answer = _invoke(retriever, generator, verifier, enable_verifier=False)
+    assert verifier.calls == []
+    assert answer.sentences == sentences
+    assert answer.verification == [] and answer.removed_sentences == []
+
+
+def test_verifier_on_removes_unsupported_sentences_and_records_them() -> None:
+    retriever, generator, (good, bad) = _two_sentence_setup()
+    outcome = VerificationOutcome(
+        kept=[good],
+        removed=[bad],
+        verification=_verdicts("supported", "unsupported"),
+        rejected=False,
+    )
+    verifier = FakeVerifier(outcome)
+    answer = _invoke(retriever, generator, verifier, enable_verifier=True)
+    assert verifier.calls == [[good, bad]]
+    assert answer.refused is False
+    assert answer.sentences == [good]
+    assert answer.removed_sentences == [bad]
+    assert [v.verdict for v in answer.verification] == ["supported", "unsupported"]
+    assert [v.verdict for v in answer.kept_verification()] == ["supported"]
+
+
+def test_verifier_rejection_becomes_a_refusal_with_its_own_reason() -> None:
+    retriever, generator, (good, bad) = _two_sentence_setup()
+    outcome = VerificationOutcome(
+        kept=[],
+        removed=[good, bad],
+        verification=_verdicts("unsupported", "unsupported"),
+        rejected=True,
+        rejection_message="rejected",
+    )
+    answer = _invoke(retriever, generator, FakeVerifier(outcome), enable_verifier=True)
+    assert answer.refused is True
+    assert answer.refusal_reason == "verifier_rejected"
+    assert answer.refusal_message == "rejected"
+    assert answer.sentences == []
+    assert answer.removed_sentences == [good, bad]
+
+
+def test_generator_refusal_skips_the_verifier() -> None:
+    verifier = FakeVerifier()
+    generator = FakeGenerator(GeneratorOutput(refused=True, refusal_message="nothing relevant"))
+    answer = _invoke(FakeRetriever([]), generator, verifier, enable_verifier=True)
+    assert verifier.calls == []
+    assert answer.refusal_reason == "insufficient_evidence"
+
+
+def test_topology_gains_a_verify_node_only_when_enabled() -> None:
+    args = (FakeRetriever([]), FakeGenerator(GeneratorOutput(refused=False)), FakeVerifier())
+    off = build_graph(settings(enable_verifier=False), *args)  # type: ignore[arg-type]
+    on = build_graph(settings(enable_verifier=True), *args)  # type: ignore[arg-type]
+    assert "verify" not in off.get_graph().nodes
+    assert "verify" in on.get_graph().nodes

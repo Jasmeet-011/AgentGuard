@@ -32,6 +32,14 @@ message. Every sentence you write must be traceable to a specific chunk.
 9. State each fact once. If more than one provided chunk supports the same fact, write a
    single sentence for it and cite all of the supporting chunk_ids together, instead of
    repeating the fact in more than one sentence.
+10. Answer only what the question asks. Include a qualifier that bears directly on the
+    answer (for example "negotiable" or "in arrears or in advance") and a closely related fact
+    from the same passage (for example, how often a fee is billed when asked what it is). Do
+    not add other fee types, services, client types, or topics the question did not ask about,
+    even when the chunks mention them. When a passage describes a main arrangement and then
+    alternatives or special cases ("in some cases", "can also be charged"), answer with the
+    main arrangement only, unless the question asks about the alternatives. Most answers need
+    two or three sentences.
 
 ## Output
 
