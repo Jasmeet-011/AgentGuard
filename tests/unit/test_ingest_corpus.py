@@ -45,6 +45,10 @@ def test_known_sections_land_in_the_right_item(
     assert item_of("vanguard-personal-advisor", "$19.5 million penalty") == {9}
     assert item_of("creative-planning", "prohibited client testimonials") >= {9}
     assert 9 in item_of("gibbs-wealth", "Third Judicial District Court")
+    # Vanguard's appended "Investment risks" pages are not Item 19 (M3 regression).
+    assert item_of("vanguard-personal-advisor", "Cybersecurity risks") == {None}
+    assert item_of("vanguard-personal-advisor", "Ownership limitations") == {None}
+    assert item_of("vanguard-personal-advisor", "VAI is a federally registered") == {19}
 
 
 def test_gibbs_glyphs_repaired(corpus: tuple[list[Chunk], list[DocSummary]]) -> None:

@@ -201,3 +201,121 @@ Wealthfront) end with Part 2B brochure supplements whose own Items 1-7 (e.g.
   Item {n}: {title}", or "{firm} | {brochure label}" for unlabeled text.
 - chunk_id = "{slug}-p{page_start}-{k}" (k counts chunks starting on that
   page). Deterministic; identical across runs on the real corpus (tested).
+
+## M3: Firm filter and multi-firm queries
+
+- Firm names are matched in the query with `firms.json` aliases on word boundaries
+  (`(?<![a-z0-9])alias(?![a-z0-9])`, case-insensitive), never raw substrings: "fisher" and
+  "savvy" are ordinary words, and "fishermen" must not select Fisher Investments. This
+  replaces PLAN.md's "simple case-insensitive substring match" (Jasmeet's M2 note).
+- One firm named: dense and BM25 are both filtered to that firm *before* ranking (a
+  Qdrant payload filter on `doc_id`; BM25 masks scores to that firm before taking top-k),
+  so a filtered query still gets a full top-k from the right firm.
+- Two or more firms named (Jasmeet's M3 instruction): results are filtered to all of them
+  and `rerank_top_n` is split evenly by round-robin across firms, in order of first
+  mention (2 firms, n=6 -> 3 + 3; 3 firms -> 2 + 2 + 2; 4 firms -> 2, 2, 1, 1). If a firm
+  runs out of candidates, the other firms fill its slots.
+- The split starts at candidate retrieval, not just the final cut: each firm gets its
+  own dense and BM25 search with `ceil(top_k / n_firms)` candidates, its own RRF fusion,
+  and its own rerank ordering. Otherwise one firm can take all 20 dense/BM25 candidates
+  before the final split ever sees the other. Dividing top_k keeps the rerank workload
+  (~40 pairs) the same as a single-firm query.
+- The trace event records `firm_filter` (matched slugs or None) and `returned_per_firm`.
+
+## M3: Index details
+
+- TOC chunks (`is_toc`) are excluded from both indexes, per Jasmeet's M2 decision.
+  Actual count: 13 in total, 1 per firm except Betterment, Creative Planning, and
+  Edelman at 2 each. (The M2 note said "1 per firm, 2 for Betterment", which does not
+  add up to 13; Creative's and Edelman's TOCs are long enough to span two chunks.)
+  `part2b` chunks stay indexed.
+- Qdrant: local path mode, cosine, 384-dim bge-small vectors, `normalize_embeddings=True`.
+  Passages are embedded as-is (header line included); queries get bge-v1.5's
+  recommended prefix "Represent this sentence for searching relevant passages: ", which
+  is the config field `embedding_query_prefix`. Payload is `chunk_id` and `doc_id`
+  only; chunk text is read from chunks.jsonl, so there is one source of truth.
+- qdrant-client 1.19.1 local mode on Windows: `delete_collection` + `create_collection`
+  with the same name brings the old points back (reproduced: 4 points, delete,
+  recreate, count is still 4). Re-ingesting would have left stale points. Fix: `ingest`
+  deletes the Qdrant directory before rebuilding (only if it contains `meta.json`), and
+  `build_dense_index` checks the stored count equals the chunk count and raises
+  `IndexBuildError` otherwise.
+- BM25: `rank_bm25.BM25Okapi` with default parameters. The pickle holds the tokenized
+  corpus plus chunk_id and doc_id order; BM25 statistics are rebuilt at load (fast for
+  733 docs). IDF always covers the whole corpus, even when a firm filter is applied.
+  Tokenizer: lowercase `[a-z0-9]+(?:[.,][0-9]+)*%?`, so "1.25%" and "1,000,000" stay
+  single tokens. No stemming (per plan). Chunks with a BM25 score of 0 are not
+  returned.
+- Reranker: `CrossEncoder` scoring `chunk.text` (header line included), loaded lazily on
+  the first `hybrid_rerank` query. All of a group's candidates go through one batched
+  `predict()` call (`batch_size=32`, so ~20-40 pairs take 1-2 forward passes). A
+  multi-firm query makes one call per firm. torch uses 6 threads (= `os.cpu_count()`).
+- RRF ties: sorted by (-score, best rank reached in any list, chunk_id). Scores are
+  summed with `math.fsum`, so they do not depend on list order.
+
+## M3: Raw reranker logits (approved by Jasmeet)
+
+The CrossEncoder's default output for a single-label model is `sigmoid(logit)`. On the
+Betterment wrap-fee query, all six reranked chunks scored 0.999, so their order was
+invisible and a threshold on that scale could not separate them. `Reranker.score` now
+passes `activation_fn=torch.nn.Identity()` and `rerank_score` is the raw logit
+(unbounded; for bge-reranker-base, roughly -11 to +8 on this corpus). M9 tunes
+`min_rerank_score` on this scale. Its default of 0.0 now means "logit >= 0", not
+"probability >= 0".
+
+## M3: Default retrieval_mode is "hybrid" (approved by Jasmeet)
+
+PLAN.md's default is `hybrid_rerank`. On this CPU, bge-reranker-base costs about 475 ms
+per (query, chunk) pair at 512 tokens, or about 220 ms at 256 tokens. That is
+compute-bound (XLM-R base over ~400-token pairs); 20 matmuls of 1024x1024 take 0.19 s,
+so the CPU is healthy. With 24-34 pairs per query, warm `hybrid_rerank` took a median of
+13.7 s (max 16.5 s) against the 1.5 s target, and lowering `top_k` cannot reach 1.5 s
+without reranking only ~3 chunks. On the 6 manual queries it helped once (Fisher) and
+hurt twice (Vanguard, the Betterment side of the comparison query).
+
+Decision: default `retrieval_mode = "hybrid"`, and the M3 latency check applies to
+`hybrid`. `hybrid_rerank` stays as an eval variant, so M6 measures whether reranking is
+worth its cost instead of assuming it is.
+
+## M3: Part 2A Item 19 ends at the first standalone heading
+
+Vanguard (SEC-registered) answers Item 19 ("Requirements for State-Registered Advisers")
+with one sentence on page 26. An "Investment risks" appendix (algorithm, data, vendor,
+cybersecurity, and fund ownership-limit risks) follows on pages 26-28 and belongs to no
+ADV item. M2 labeled all of it Item 19 (7 chunks). That made "Item 19" the top rerank
+result for the SEC enforcement query.
+
+Fix in `sections.py`: a Part 2A Item 19 section ends at its first standalone heading
+paragraph (at most 6 words, capitalized, no sentence punctuation) after the heading
+paragraph. The rest becomes an unlabeled section (`adv_item=None`), the same treatment
+as other text outside any item. The rule only applies to Item 19, because that item's
+content is inherently short. Vanguard is the only brochure with an Item 19. Now
+`p26-2` (one sentence) is Item 19 and `p26-3` through `p28-0` are unlabeled. The
+corpus is 746 chunks, 733 indexed. There are regression tests at the section level
+and on the real corpus.
+
+## M3: Reranker comparison: ms-marco-MiniLM-L-6-v2 replaces bge-reranker-base
+
+A 20-minute time-boxed test, run as Jasmeet asked. Same 6 queries, same hybrid
+candidates (24-34 per query), raw logits, 3 warm runs per query, after the Item 19
+fix. The run took 5 minutes. Top-1 result in `hybrid_rerank`:
+
+| Query | bge-reranker-base | ms-marco-MiniLM-L-6-v2 |
+|---|---|---|
+| Fisher fees | Fisher Item 5 (1.56) | Fisher Item 5 (6.30) |
+| Vanguard SEC action | **Item 10 (-2.95); the Item 9 chunk is not in the top 6** | **Item 9 SEC settlement (2.72; next is 0.27)** |
+| Betterment wrap fees | part2a Item 5 (7.59); wrap appendix at #5-6 | part2a Item 5 (8.23); wrap appendix at #5-6 |
+| Wealthfront vs Betterment | Wealthfront Item 5; Betterment's best is Item 18 | Wealthfront Item 5; Betterment's best is wrap Item 4 |
+| Gibbs custody | Gibbs Item 15 (8.62) | Gibbs Item 15 (9.72) |
+| Flat annual fee | Edelman / Savvy / Creative (miss) | Creative / Savvy / Edelman (miss) |
+| Warm latency, median (max) | 13.0 s (18.4 s) | 2.1 s (2.7 s) |
+
+MiniLM fixes the one query where bge was wrong, regresses on none, picks a
+fee-related Betterment chunk over Item 18 in the comparison query, and is 6x faster.
+Neither model solves the Betterment wrap-appendix query or the flat-fee query.
+Decision: `reranker_model = "cross-encoder/ms-marco-MiniLM-L-6-v2"` (88 MB download,
+22M parameters). It is used only by the `hybrid_rerank` eval variant; the default mode
+stays `hybrid`. This departs from the stack table's reranker model, with Jasmeet's
+authorization for this test. Caveats: 6 queries is a tiny sample; ms-marco is trained
+on English web-search queries, not financial disclosures; and 2.1 s is still over the
+1.5 s budget. M6 measures whether the variant helps.

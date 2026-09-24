@@ -16,6 +16,11 @@ from agentguard.models import DocType, FirmInfo, Page
 # A document that has this many distinct explicit "Item N" headings uses them consistently,
 # so bare-title matches in it are subheadings ("Client Referrals - Schwab"), not items.
 MIN_EXPLICIT_ITEMS = 6
+# Part 2A Item 19 applies only to state-registered advisers; an SEC-registered firm answers it
+# in a sentence. A standalone heading after that answer starts material appended after the
+# last item (Vanguard's "Investment risks"), which belongs to no item.
+STATE_REGISTERED_ITEM = 19
+MAX_STANDALONE_HEADING_WORDS = 6
 
 
 class Paragraph(BaseModel):
@@ -155,7 +160,42 @@ def _split_segment(pages: list[Page], doc_type: DocType) -> list[Section]:
                 current.append(line)
                 line_index += 1
             _flush(sections[-1], page.page_number, current)
-    return [s for s in sections if s.paragraphs]
+    return _end_state_item_at_next_heading([s for s in sections if s.paragraphs])
+
+
+def _is_standalone_heading(text: str) -> bool:
+    """A short paragraph that reads like a heading: capitalized, no sentence punctuation."""
+    text = text.strip()
+    words = text.split()
+    return (
+        0 < len(words) <= MAX_STANDALONE_HEADING_WORDS
+        and text[0].isupper()
+        and text[-1] not in ".:;,"
+    )
+
+
+def _end_state_item_at_next_heading(sections: list[Section]) -> list[Section]:
+    """Cut a Part 2A Item 19 section at its first standalone heading; the rest is unlabeled."""
+    result: list[Section] = []
+    for section in sections:
+        cut = None
+        if section.doc_type == "part2a" and section.adv_item == STATE_REGISTERED_ITEM:
+            cut = next(
+                (
+                    i
+                    for i, p in enumerate(section.paragraphs)
+                    if i > 0 and _is_standalone_heading(p.text)
+                ),
+                None,
+            )
+        if cut is None:
+            result.append(section)
+            continue
+        result.append(section.model_copy(update={"paragraphs": section.paragraphs[:cut]}))
+        result.append(
+            Section(doc_type=section.doc_type, adv_item=None, paragraphs=section.paragraphs[cut:])
+        )
+    return result
 
 
 def _flush(section: Section, page_number: int, lines: list[str]) -> None:

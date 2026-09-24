@@ -1,6 +1,7 @@
 """Load `data/raw/firms.json`: display name, aliases, and brochure type per PDF slug."""
 
 import json
+import re
 from pathlib import Path
 
 from agentguard.models import FirmInfo
@@ -29,3 +30,23 @@ def firm_for_pdf(pdf: Path, firms: dict[str, FirmInfo]) -> FirmInfo:
             f"No {FIRMS_FILENAME} entry for {pdf.name}. Add {pdf.stem!r}. Known: {sorted(firms)}"
         )
     return firm
+
+
+def _alias_pattern(alias: str) -> re.Pattern[str]:
+    """Match `alias` as whole words: "fisher" matches "Fisher's" but not "fishermen"."""
+    return re.compile(rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])")
+
+
+def match_firms(query: str, firms: dict[str, FirmInfo]) -> list[str]:
+    """Slugs of the firms whose aliases appear in `query`, ordered by first mention.
+
+    Aliases are matched case-insensitively on word boundaries, never as raw substrings,
+    because some aliases ("savvy", "fisher") are also ordinary English words.
+    """
+    text = query.lower()
+    first_mention: dict[str, int] = {}
+    for slug, firm in firms.items():
+        positions = [m.start() for a in firm.aliases for m in _alias_pattern(a).finditer(text)]
+        if positions:
+            first_mention[slug] = min(positions)
+    return sorted(first_mention, key=lambda slug: (first_mention[slug], slug))

@@ -5,7 +5,7 @@
 | M0. Repo skeleton and tooling | DONE |
 | M1. Data contracts, LLM wrapper, tracing | DONE |
 | M2. Ingestion: parse and chunk | DONE |
-| M3. Retrieval: dense, sparse, fusion, rerank | TODO |
+| M3. Retrieval: dense, sparse, fusion, rerank | DONE |
 | M4. Generator and baseline pipeline | TODO |
 | M5. Golden dataset | TODO |
 | M6. Eval harness and baseline numbers | TODO |
@@ -168,12 +168,105 @@ firms.py 31, items.py 166, parse.py 149, pipeline.py 103, sections.py 189
 
 ---
 
+## M3 details
+
+**What was built:**
+- `retrieval/dense.py`: `Embedder` (bge-small-en-v1.5, normalized, with bge's query
+  prefix from the new config field `embedding_query_prefix`), a local on-disk Qdrant
+  collection (cosine), and `DenseSearcher` with a `doc_id` payload filter.
+- `retrieval/sparse.py`: regex tokenizer (keeps "1.25%" and "1,000,000"), BM25Okapi
+  over a pickled tokenized corpus, and a firm filter applied before top-k.
+- `retrieval/fusion.py`: `rrf_fuse`, a pure function using `math.fsum`, with
+  deterministic ties (best rank, then chunk_id).
+- `retrieval/rerank.py`: `Reranker` (CrossEncoder returning raw logits, one batched
+  `predict()` per candidate group) and `rerank()`.
+- `retrieval/retriever.py`: `Retriever` composes the stages by mode. It applies the
+  firm filter (word-boundary alias match, `ingest/firms.py:match_firms`). A
+  multi-firm query gets per-firm candidate retrieval with `top_k` split between
+  firms, and the final `rerank_top_n` is split round-robin across firms. The
+  reranker loads lazily. One `retrieve` trace event holds mode, firm_filter,
+  per-stage counts and ms, and returned_per_firm.
+- `ingest/index.py`: builds both indexes and excludes `is_toc` chunks, logged per
+  firm. It deletes the Qdrant directory before a rebuild (a qdrant-client
+  Windows bug kept deleted points) and checks the point count. `agentguard ingest`
+  now builds the indexes; `agentguard search "q" --mode ...` prints ranked chunks
+  with all scores.
+- M2 fix: Part 2A Item 19 ends at its first standalone heading. Vanguard's
+  "Investment risks" appendix (7 chunks) was mislabeled Item 19 and is now
+  unlabeled. Corpus: 746 chunks, 733 indexed, 13 TOC excluded (1 per firm;
+  Betterment, Creative Planning and Edelman have 2 each).
+- Config (approved by Jasmeet): `retrieval_mode` default is `hybrid`;
+  `reranker_model` is `cross-encoder/ms-marco-MiniLM-L-6-v2`; `rerank_score` is a
+  raw logit. See DECISIONS.md.
+
+**Models:** first-run download to `C:\Users\HTC\.cache\huggingface\hub`:
+bge-small-en-v1.5 133 MB and bge-reranker-base 1.13 GB (evaluated, no longer the
+default), then ms-marco-MiniLM-L-6-v2 88 MB. Indexing 733 chunks with bge-small
+takes 2-4 min on this CPU.
+
+**Test results:**
+- `make check` → ruff check and format clean; pytest (unit): 171 passed, 3
+  deselected. New tests cover:
+  - RRF: formula, order, tie-breaks, order independence, and bad input.
+  - Retriever modes with mocked backends: dense-only, hybrid without rerank,
+    rerank reordering, default mode from settings, and the trace contents.
+  - Firm filtering: a single firm reaches both backends; aliases match on word
+    boundaries only.
+  - Multi-firm split: 3 + 3 for two firms in all three modes, 2 + 2 + 2 for
+    three firms, and backfill when a firm runs out.
+  - Real-backend behavior: stale index errors; BM25 filters before top-k and
+    drops TOC and zero-score chunks; Qdrant filtering and rebuild/reset.
+  - `match_firms` on real firms.json: all 6 manual queries plus negatives like
+    "fishermen" and "unsavvy".
+  - Item 19 cut: section-level and real-corpus regression tests.
+- **Manual, `hybrid` mode, top result** (6 queries given by Jasmeet):
+
+  | Query | Top result | Grade |
+  |---|---|---|
+  | What fees does Fisher Investments charge? | fisher p21-1, Item 18 (privacy); no Item 5 chunk in the top 6 | FAIL |
+  | Has Vanguard been subject to any SEC enforcement action? | vanguard p19-2, Item 9 (SEC settlement) | PASS |
+  | What are the fees for Betterment's wrap fee program? | betterment p10-1, part2a Item 5; wrap appendix Item 4 is #2 | FAIL (expected the wrap_appendix1 half) |
+  | Compare Wealthfront and Betterment advisory fees | wealthfront p11-1, Item 5; 3 Wealthfront + 3 Betterment (wrap Item 4 x2, Item 9) | PASS |
+  | Does Gibbs Wealth Management have custody of client assets? | gibbs p29-0, Item 15 (glyph-repaired text) | PASS |
+  | Which firms charge a flat annual fee instead of a percentage of assets? | Savvy, Creative, Edelman, Wealthfront | FAIL; known limitation, below |
+
+  Fisher hypothesis (not investigated in M3): once the filter is on, the firm
+  name in the query carries no information but still boosts chunks that repeat
+  "Fisher Investments" (the Item 18 privacy chunk is #1 in both dense and BM25).
+  `hybrid_rerank` with MiniLM does put Fisher Item 5 first, at 1.8 s.
+- **Latency (`hybrid`, 20 warm runs per query):** median 35 ms, max 81 ms
+  (target < 1.5 s): PASS. The two-firm query is slowest (two filtered searches).
+  `hybrid_rerank` with MiniLM: median 2.1 s, max 2.7 s; with bge-reranker-base:
+  13.0 s median.
+- **Cold start (`hybrid`):** 14.0 s = imports (torch / sentence-transformers)
+  12.5 s + loading the embedder, Qdrant and BM25 1.4 s; the first query is then
+  fast. `hybrid_rerank` adds about 5 s for the reranker load on its first query.
+- Torch uses 6 threads (= `os.cpu_count()`). Each candidate group is scored in
+  one batched `predict()` call.
+
+**Known limitation (Jasmeet's grading):** cross-firm semantic queries. "Which
+firms charge a flat annual fee instead of a percentage of assets?" should
+surface Facet and Atwood, the flat-fee firms. No mode returns either one
+(dense, hybrid, and both rerankers return Edelman, Savvy, Creative Planning and
+Wealthfront). Without a firm filter, 6 slots over 733 chunks rank chunks that
+mention "annual fee" and "flat fee" in passing, not firms whose fee model is
+flat. Not addressed in M3.
+
+**Deferred:** Nothing from M3's task list. Retrieval quality on Fisher, the
+Betterment wrap appendix, and cross-firm questions is left to M6 to measure.
+
+**Non-obvious decisions:** see DECISIONS.md (M3 entries).
+
+---
+
 ## Notes for later milestones
 
-- **M3 firm filter:** match `firms.json` aliases on word boundaries, never raw
-  substring matching. "savvy" and "fisher" are also ordinary English words.
-- **M3 indexes:** exclude `is_toc` chunks from both Qdrant and BM25, and log
-  how many were excluded per firm (expected: 13 total, 1 per firm, 2 for
-  Betterment). Decided by Jasmeet after M2.
-- **M3:** `part2b` chunks stay indexed (doc_type="part2b", `adv_item=None`).
-  Decided by Jasmeet after M2.
+- **M6:** add a `hybrid_rerank` variant (MiniLM reranker) next to `dense_only`,
+  `hybrid`, `baseline`. PLAN.md defines `baseline` as hybrid_rerank; with the
+  default now `hybrid`, decide with Jasmeet which one `baseline` means.
+- **M9:** `min_rerank_score` is on the raw-logit scale and only applies when
+  reranking runs. In the default `hybrid` mode there is no rerank score, so the
+  threshold needs a decision (fused score, or rerank only for the threshold).
+- **M13 offline demo:** sentence-transformers sends HTTP HEAD requests to the Hugging
+  Face Hub on every model load. With the network off, set `HF_HUB_OFFLINE=1` (models
+  are cached in `~/.cache/huggingface/hub`).

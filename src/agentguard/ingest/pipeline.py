@@ -101,3 +101,12 @@ def write_chunks(chunks: list[Chunk], processed_dir: Path) -> Path:
         for chunk in chunks:
             f.write(chunk.model_dump_json() + "\n")
     return path
+
+
+def load_chunks(processed_dir: Path) -> list[Chunk]:
+    """Read `{processed_dir}/chunks.jsonl` written by `write_chunks`."""
+    path = processed_dir / CHUNKS_FILENAME
+    if not path.is_file():
+        raise FileNotFoundError(f"{path} not found. Run `agentguard ingest` first.")
+    with path.open(encoding="utf-8") as f:
+        return [Chunk.model_validate_json(line) for line in f if line.strip()]

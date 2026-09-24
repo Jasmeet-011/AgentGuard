@@ -121,3 +121,37 @@ TITLES = [
     "Methods of Analysis, Investment Strategies and Risk of Loss",
     "Disciplinary Information",
 ]
+
+
+def test_item_19_ends_at_standalone_heading_after_its_answer() -> None:
+    # vanguard p26: a one-sentence Item 19 answer, then an "Investment risks" appendix that
+    # belongs to no ADV item (it was labeled Item 19 before this fix).
+    pages = [
+        page(
+            26,
+            ["Item 18 Financial Information", "We are not aware of any financial condition."],
+            ["Item 19 Requirements for State-Registered Advisers", "We are SEC registered."],
+            ["Investment risks"],
+            ["Securities recommendations and risk", "Past performance is no guarantee."],
+        ),
+        page(27, ["Cybersecurity risks", "Vanguard has safeguards."]),
+    ]
+    sections = split_sections(pages, firm())
+    assert [(s.adv_item, s.paragraphs[0].text) for s in sections] == [
+        (18, "Item 18 Financial Information We are not aware of any financial condition."),
+        (19, "Item 19 Requirements for State-Registered Advisers We are SEC registered."),
+        (None, "Investment risks"),
+    ]
+    assert [p.page_number for p in sections[2].paragraphs] == [26, 26, 27]
+
+
+def test_item_19_without_trailing_heading_is_untouched() -> None:
+    pages = [
+        page(
+            9,
+            ["Item 19 Requirements for State-Registered Advisers", "Our principal is Jane Doe."],
+            ["She has no disciplinary history and no outside business activities."],
+        )
+    ]
+    sections = split_sections(pages, firm())
+    assert [(s.adv_item, len(s.paragraphs)) for s in sections] == [(19, 2)]
