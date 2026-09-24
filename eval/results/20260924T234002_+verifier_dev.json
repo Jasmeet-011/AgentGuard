@@ -1,7 +1,7 @@
 {
-  "variant": "baseline",
+  "variant": "+verifier",
   "split": "dev",
-  "timestamp": "20260924T232238",
+  "timestamp": "20260924T234002",
   "preliminary": false,
   "verified_in_file": 20,
   "unverified_skipped": 0,
@@ -14,7 +14,8 @@
     "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
     "generator_model": "claude-sonnet-5",
     "judge_model": "claude-sonnet-5",
-    "enable_verifier": false,
+    "enable_verifier": true,
+    "enable_decomposition": false,
     "enable_policy_guard": false,
     "enable_score_threshold": false,
     "min_rerank_score": 0.0
@@ -31,9 +32,9 @@
     "false_refusal_rate": 0.0,
     "policy_block_rate": 0.6666666666666666,
     "policy_reason_rate": 0.6666666666666666,
-    "latency_p50_ms": 4997.649150027428,
-    "latency_p95_ms": 7994.524034994538,
-    "cost_per_query_usd": 0.016446857142857145,
+    "latency_p50_ms": 7171.105150016956,
+    "latency_p95_ms": 10970.476894982856,
+    "cost_per_query_usd": 0.02294242857142857,
     "eval_cost_per_question_usd": 0.009266714285714284
   },
   "rows": [
@@ -81,8 +82,8 @@
       ],
       "invalid_citations": 0,
       "total_citations": 3,
-      "latency_ms": 7894.12509999238,
-      "cost_usd": 0.028880000000000003,
+      "latency_ms": 9865.449299977627,
+      "cost_usd": 0.038238,
       "judge_cost_usd": 0.017051999999999998
     },
     {
@@ -124,8 +125,8 @@
       ],
       "invalid_citations": 0,
       "total_citations": 2,
-      "latency_ms": 5057.898099999875,
-      "cost_usd": 0.014658,
+      "latency_ms": 7237.096500000916,
+      "cost_usd": 0.022407999999999997,
       "judge_cost_usd": 0.010960000000000001
     },
     {
@@ -192,8 +193,8 @@
       ],
       "invalid_citations": 0,
       "total_citations": 3,
-      "latency_ms": 6423.212599998806,
-      "cost_usd": 0.017932,
+      "latency_ms": 9153.396900102962,
+      "cost_usd": 0.028116000000000002,
       "judge_cost_usd": 0.015954
     },
     {
@@ -240,8 +241,8 @@
       ],
       "invalid_citations": 0,
       "total_citations": 4,
-      "latency_ms": 4886.106300051324,
-      "cost_usd": 0.013856,
+      "latency_ms": 7105.113800032996,
+      "cost_usd": 0.021988,
       "judge_cost_usd": 0.011478
     },
     {
@@ -288,8 +289,8 @@
       ],
       "invalid_citations": 0,
       "total_citations": 2,
-      "latency_ms": 3947.984499973245,
-      "cost_usd": 0.014494,
+      "latency_ms": 5804.513299954124,
+      "cost_usd": 0.022176,
       "judge_cost_usd": 0.011543999999999999
     },
     {
@@ -376,8 +377,8 @@
       ],
       "invalid_citations": 0,
       "total_citations": 7,
-      "latency_ms": 8180.979199998546,
-      "cost_usd": 0.018592,
+      "latency_ms": 12808.804100030102,
+      "cost_usd": 0.035666,
       "judge_cost_usd": 0.023322
     },
     {
@@ -439,8 +440,8 @@
       ],
       "invalid_citations": 0,
       "total_citations": 5,
-      "latency_ms": 6351.881999988109,
-      "cost_usd": 0.017566,
+      "latency_ms": 9980.608399957418,
+      "cost_usd": 0.030903999999999997,
       "judge_cost_usd": 0.018952
     },
     {
@@ -507,8 +508,8 @@
       ],
       "invalid_citations": 0,
       "total_citations": 3,
-      "latency_ms": 5203.084499982651,
-      "cost_usd": 0.015962,
+      "latency_ms": 8815.208899963181,
+      "cost_usd": 0.026202000000000003,
       "judge_cost_usd": 0.020472
     },
     {
@@ -533,7 +534,7 @@
       "sentence_verdicts": [],
       "invalid_citations": 0,
       "total_citations": 0,
-      "latency_ms": 3899.1864999989048,
+      "latency_ms": 4149.746900016908,
       "cost_usd": 0.014484,
       "judge_cost_usd": 0.0
     },
@@ -559,7 +560,7 @@
       "sentence_verdicts": [],
       "invalid_citations": 0,
       "total_citations": 0,
-      "latency_ms": 4293.568700028118,
+      "latency_ms": 4431.009299994912,
       "cost_usd": 0.014596,
       "judge_cost_usd": 0.0
     },
@@ -585,7 +586,7 @@
       "sentence_verdicts": [],
       "invalid_citations": 0,
       "total_citations": 0,
-      "latency_ms": 3897.270200017374,
+      "latency_ms": 4180.050300026778,
       "cost_usd": 0.014692,
       "judge_cost_usd": 0.0
     },
@@ -611,7 +612,7 @@
       "sentence_verdicts": [],
       "invalid_citations": 0,
       "total_citations": 0,
-      "latency_ms": 5060.158000036608,
+      "latency_ms": 5450.615600042511,
       "cost_usd": 0.015304,
       "judge_cost_usd": 0.0
     },
@@ -637,7 +638,7 @@
       "sentence_verdicts": [],
       "invalid_citations": 0,
       "total_citations": 0,
-      "latency_ms": 4602.369200030807,
+      "latency_ms": 4985.080600017682,
       "cost_usd": 0.01353,
       "judge_cost_usd": 0.0
     },
@@ -663,8 +664,8 @@
       "sentence_verdicts": [],
       "invalid_citations": 0,
       "total_citations": 2,
-      "latency_ms": 4937.400200054981,
-      "cost_usd": 0.01571,
+      "latency_ms": 7859.789300011471,
+      "cost_usd": 0.022889999999999997,
       "judge_cost_usd": 0.0
     }
   ]

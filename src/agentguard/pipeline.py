@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 from qdrant_client import QdrantClient
 
+from agentguard.agents.decomposer import Decomposer
 from agentguard.agents.generator import Generator
 from agentguard.agents.verifier import Verifier
 from agentguard.config import Settings
@@ -38,6 +39,7 @@ ALLOWED_OVERRIDE_FIELDS: frozenset[str] = frozenset(
         "enable_policy_guard",
         "enable_verifier",
         "enable_score_threshold",
+        "enable_decomposition",
         "min_rerank_score",
         "verifier_max_drop_ratio",
         "generator_model",
@@ -89,7 +91,8 @@ class Pipeline:
         )
         generator = Generator(settings, resources.llm)
         verifier = Verifier(settings, resources.llm)
-        self._graph = build_graph(settings, retriever, generator, verifier)
+        decomposer = Decomposer(settings, resources.llm)
+        self._graph = build_graph(settings, retriever, generator, verifier, decomposer)
 
     @property
     def resources(self) -> Resources:
@@ -107,6 +110,7 @@ class Pipeline:
         initial: PipelineState = {
             "question": question,
             "trace": trace,
+            "sub_queries": [],
             "retrieved": [],
             "generator_output": None,
             "verification": [],

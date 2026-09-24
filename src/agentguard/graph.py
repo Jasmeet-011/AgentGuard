@@ -1,4 +1,4 @@
-"""The LangGraph pipeline: retrieve -> generate -> [verify] -> finalize, from config flags.
+"""The LangGraph pipeline: [decompose] -> retrieve -> generate -> [verify] -> finalize, from config flags.
 
 `build_graph` is deliberately dumb: it wires nodes around a `Retriever` and `Generator`
 it is handed. `pipeline.Pipeline` is what actually builds those (from shared, load-once
@@ -10,6 +10,7 @@ from typing import Literal, TypedDict
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from agentguard.agents.decomposer import Decomposer
 from agentguard.agents.generator import Generator
 from agentguard.agents.verifier import Verifier
 from agentguard.config import Settings
@@ -35,6 +36,7 @@ class PipelineState(TypedDict):
 
     question: str
     trace: Trace
+    sub_queries: list[str]
     retrieved: list[RetrievedChunk]
     generator_output: GeneratorOutput | None
     verification: list[VerificationResult]
@@ -85,9 +87,15 @@ def _build_answer(state: PipelineState, output: GeneratorOutput) -> Answer:
 
 
 def build_graph(
-    settings: Settings, retriever: Retriever, generator: Generator, verifier: Verifier
+    settings: Settings,
+    retriever: Retriever,
+    generator: Generator,
+    verifier: Verifier,
+    decomposer: Decomposer,
 ) -> CompiledStateGraph:
-    """Compile retrieve -> generate -> [verify] -> finalize; `verify` only if enabled.
+    """Compile [decompose] -> retrieve -> generate -> [verify] -> finalize.
+
+    `decompose` (before retrieval) and `verify` exist only if their flags are on.
 
     A generator refusal (or an empty answer) skips `verify`: there is nothing to check.
     Raises `NotImplementedError` if a flag for a node not yet built (policy_guard,
@@ -95,8 +103,14 @@ def build_graph(
     """
     _check_implemented(settings)
 
+    def decompose_node(state: PipelineState) -> dict[str, object]:
+        return {"sub_queries": decomposer.decompose(state["question"], state["trace"])}
+
     def retrieve_node(state: PipelineState) -> dict[str, object]:
-        return {"retrieved": retriever.retrieve(state["question"], state["trace"])}
+        found = retriever.retrieve(
+            state["question"], state["trace"], sub_queries=state["sub_queries"] or None
+        )
+        return {"retrieved": found}
 
     def generate_node(state: PipelineState) -> dict[str, object]:
         output = generator.generate(state["question"], state["retrieved"], state["trace"])
@@ -133,7 +147,12 @@ def build_graph(
     graph.add_node("retrieve", retrieve_node)
     graph.add_node("generate", generate_node)
     graph.add_node("finalize", finalize_node)
-    graph.set_entry_point("retrieve")
+    if settings.enable_decomposition:
+        graph.add_node("decompose", decompose_node)
+        graph.set_entry_point("decompose")
+        graph.add_edge("decompose", "retrieve")
+    else:
+        graph.set_entry_point("retrieve")
     graph.add_edge("retrieve", "generate")
     if settings.enable_verifier:
         graph.add_node("verify", verify_node)

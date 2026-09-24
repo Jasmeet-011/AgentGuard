@@ -9,12 +9,12 @@
 | M4. Generator and baseline pipeline | DONE |
 | M5. Golden dataset | DONE (20 entries, not the planned 30) |
 | M6. Eval harness and baseline numbers | DONE |
-| M7. Verifier agent | IN PROGRESS (code and tests done; eval waits for the full golden set) |
+| M7. Verifier agent (+ query decomposition) | DONE |
 | M8. Policy guard | TODO |
-| M9. Evidence threshold and final test-set run | TODO |
+| M9. Evidence threshold and final test-set run | TODO (threshold optional: correct refusals already 100% on dev; the final test-set run is still required) |
 | M10. Streamlit UI: Ask tab | TODO |
 | M11. Streamlit UI: Evals tab | TODO |
-| M12. MCP server | TODO |
+| M12. MCP server | CUT |
 | M13. Demo hardening and code freeze | TODO |
 
 ---
@@ -491,7 +491,7 @@ until the golden set is complete (fewer sentences could also lower correctness).
 
 ---
 
-## M7 details (code only; the eval waits for the full golden set)
+## M7 details
 
 **What was built:**
 - `prompts/verifier_system.md`: strict claim-level check of each sentence against only its
@@ -507,30 +507,89 @@ until the golden set is complete (fewer sentences could also lower correctness).
 - `graph.py`: `verify` node behind `enable_verifier`, reached by a conditional edge from
   `generate`; a generator refusal or empty answer skips it. A rejection becomes a refusal
   with `refusal_reason="verifier_rejected"` and the sentences kept in `removed_sentences`.
-  `build_graph` now takes the `Verifier`; `Pipeline` builds one.
   `Answer.verification` holds one verdict per original sentence, and
   `Answer.kept_verification()` aligns verdicts with the kept sentences so partial ones can be
   marked. `agentguard ask` marks partial sentences and lists removed ones with the reason.
-- `enable_verifier` now defaults to True. `enable_policy_guard` and `enable_score_threshold`
-  stay False and still raise `NotImplementedError` if turned on.
-- Eval variant `+verifier` (baseline plus verifier) added to `VARIANTS`. Not run.
+  `enable_verifier` defaults to True.
+- **Query decomposition (added scope, Jasmeet):** `agents/decomposer.py` (`Decomposer`, uses
+  `policy_model`, i.e. Haiku) and `prompts/decompose_system.md`. It returns 1 to 3
+  self-contained sub-queries; a single-topic question always comes back as the question
+  itself (enforced in code, not only in the prompt). `graph.py` gains a `decompose` node
+  before `retrieve` behind `enable_decomposition`. `Retriever.retrieve(..., sub_queries=)`
+  retrieves each sub-query with the same firm filter (matched on the original question), then
+  `merge_unique` merges the results round-robin, deduplicated, up to `rerank_top_n`. The
+  generator and verifier still see the original question. `enable_decomposition` is in
+  `Pipeline`'s override allowlist and defaults to True (DECISIONS.md).
+- Eval variants: `+verifier`, `+decompose`, `+verifier+decompose`. Every variant now sets
+  `enable_decomposition` explicitly (a unit test enforces that all variants set all optional
+  flags), so flipping a default cannot silently change an older variant.
 
 **Test results:**
-- `make check` -> ruff clean, 267 unit tests passed. New: verifier logic (removal, partial
-  kept, out-of-order results, drop ratio at and above the limit, all-removed rejection,
-  coverage errors, user message contents, one batched call, configured ratio); graph
-  (verifier off never called, on removes and records, rejection reason, generator refusal
-  skips it, `verify` node exists only when enabled); config default.
-- `make test-int` -> 8 passed, including the new fabricated-number test: the generator's
-  output is monkeypatched to add "Savvy's minimum account size is $750,000 for all
-  clients, with no exceptions." citing a real chunk; the verifier removes it, the real
-  $500,000 sentence survives, and the removed sentence is reported.
-- Manual `agentguard ask` on q006: 2 sentences kept, verify node about 2.3 s and $0.0075 on
-  top of generate.
+- `make check` -> ruff clean, 282 unit tests passed. New: decomposer (sub-queries and trace
+  detail, policy model, single-topic unchanged and reworded single query replaced, 1 to 3
+  schema, cleanup), `merge_unique` (round-robin, dedupe, fill, cap), retriever with
+  sub-queries (same firm filter for each, merged to top_n, trace detail only when several),
+  graph (decomposer never called when off, sub-queries reach the retriever while the
+  generator gets the original question, `decompose` node only when enabled), variants set
+  every optional flag. The verifier tests from earlier pass unchanged.
+- `make test-int` -> 8 passed, including the fabricated-number test: the verifier removes an
+  injected "$750,000 for all clients" sentence and keeps the real $500,000 one. One earlier
+  run had a `GeneratorOutput` validation failure (twice) in one integration test, which left
+  a Qdrant client open and failed the next test on the local Qdrant lock; a rerun passed.
+  Not investigated further.
 
-**Deferred:** the M7 eval (`agentguard eval --variant baseline --variant +verifier`) and the
-faithfulness / correctness / latency / cost comparison PLAN.md asks for. It runs once the
-full golden set exists.
+**Eval (dev, 8 answerable / 3 unanswerable / 3 policy; source `eval/results/latest_comparison.md`):**
+
+| Metric | baseline | +verifier | +decompose | +verifier+decompose |
+|---|---|---|---|---|
+| Retrieval recall@k | 87.5% | 87.5% | 100.0% | 100.0% |
+| Answer correctness | 90.0% | 90.0% | 100.0% | 100.0% |
+| Faithfulness | 100.0% | 100.0% | 100.0% | 100.0% |
+| Invalid citation rate | 0.0% | 0.0% | 0.0% | 0.0% |
+| Correct refusal / false refusal | 100% / 0% | 100% / 0% | 100% / 0% | 100% / 0% |
+| Policy block rate | 66.7% | 66.7% | 66.7% | 66.7% |
+| Latency p50 (ms) | 5088 | 7171 | 5710 | 7834 |
+| Latency p95 (ms) | 8046 | 10970 | 9536 | 13675 |
+| Pipeline cost per query | $0.0164 | $0.0229 | $0.0179 | $0.0246 |
+
+Latency is measured live and varies about 5% between runs (retrieval is not cached); the
+baseline p50 was 4998 ms in the run before the last rerun.
+
+q018 ("What does Wealthfront charge on an Automated Investing Account, and has it faced any
+SEC enforcement action?"), per-fact judge verdicts:
+
+| Key fact | baseline | +verifier | +decompose | +verifier+decompose |
+|---|---|---|---|---|
+| annual fee of 0.25% for an Automated Investing Account | present | present | present | present |
+| settled with the SEC in 2018 | MISSING | MISSING | present | present |
+| SEC found improper TLH white-paper disclosures on wash sales | MISSING | MISSING | present | present |
+| SEC found improper retweets and blogger compensation | MISSING | MISSING | present | present |
+| $250,000 penalty | MISSING | MISSING | present | present |
+| correctness / recall hit | 0.20 / miss | 0.20 / miss | 1.00 / hit | 1.00 / hit |
+
+**What each component did (read with the caveats below):**
+- **Verifier: no measurable effect on dev, and it costs latency and money.** Faithfulness was
+  already 100% in the baseline, so there was nothing to remove, and it removed nothing: all
+  14 answers are identical with and without it. It adds about 2.1 s at p50 (+41%) and
+  $0.0065 per query (+40%). PLAN.md asks for one hypothesis when faithfulness does not
+  improve. Checked: a ceiling effect (baseline faithfulness is 100% by the judge, so there
+  is no headroom), not a broken verifier, since the integration test shows it does remove a
+  fabricated number. Its value would show on weaker generators or questions that invite
+  invention; this dev set does not contain such questions.
+- **Decomposition: fixes q018, changes nothing else.** Recall 87.5% to 100%, correctness
+  90% to 100%. The retrieved chunks changed only for q018 (now includes Item 9, page 32);
+  every other question retrieved the same chunks, so its answer and scores did not move, and
+  the policy/refusal rows are unchanged. Cost: about +0.6 s p50 and +$0.0015 per query (one
+  Haiku call). q018 itself went from 5.3 s to 10.2 s (an extra generation over more text).
+- **Combined:** same quality as `+decompose` alone, at the price of both components.
+
+**Caveats:** q018 is the question that motivated decomposition (in-sample): the prompt's
+example split ("fees AND disciplinary history") mirrors it. The gain is one question out of
+eight, and the dev set is small. The test split was not touched.
+
+**Deferred:** Nothing from the M7 scope. Still open for M8: q029 (address of a founder) is
+answered; the policy guard must block it. `agentguard eval` with no `--variant` now runs all
+six variants.
 
 ---
 

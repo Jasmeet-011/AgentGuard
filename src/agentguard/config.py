@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     enable_policy_guard: bool = False
     enable_verifier: bool = True
     enable_score_threshold: bool = False
+    # Query decomposition (M7): on since its dev eval landed (fixes q018; DECISIONS.md).
+    enable_decomposition: bool = True
 
     min_rerank_score: float = 0.0
     verifier_max_drop_ratio: float = Field(default=0.5, ge=0.0, le=1.0)

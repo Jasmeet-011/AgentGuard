@@ -201,3 +201,12 @@ def test_results_files_and_latest_comparison(tmp_path: Path) -> None:
     assert "| Metric | baseline | dense |" in text
     assert "25.0%" in text  # the newer baseline run's correctness
     assert write_comparison(tmp_path).name == "latest_comparison.md"
+
+
+def test_every_variant_sets_the_optional_components_explicitly() -> None:
+    """A variant must not inherit a default flag: flipping a default would change old variants."""
+    flags = {"enable_verifier", "enable_decomposition", "enable_policy_guard"}
+    for name, overrides in VARIANTS.items():
+        assert flags <= overrides.keys(), name
+    assert VARIANTS["baseline"]["enable_decomposition"] is False
+    assert VARIANTS["+decompose"]["enable_decomposition"] is True

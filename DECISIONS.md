@@ -626,3 +626,45 @@ result. `dense` and `hybrid` remain ablation variants.
   policy guard. M8 must block it.
 - M9's evidence threshold becomes optional: correct refusals are already 100%. M12 (MCP) is
   cut.
+
+## M7: Query decomposition (Jasmeet's expanded scope; PLAN.md's planner condition met by q018)
+
+- **Where.** `agents/decomposer.py` + `prompts/decompose_system.md`, a `decompose` node before
+  `retrieve`, behind `enable_decomposition`. Model: `policy_model` (Haiku), as instructed: one
+  cheap call. No new config field besides the flag, which is in `ALLOWED_OVERRIDE_FIELDS`.
+- **Output contract.** 1 to 3 sub-queries (schema `minItems 1`, `maxItems 3`). Blanks and
+  case-insensitive duplicates are dropped. If the result is a single query, the pipeline uses
+  the original question, not the model's version. First live run on the dev questions: the
+  model rephrased a single-topic question into a keyword query ("Betterment 2023 SEC
+  settlement") and split an advice question that names two firms into two fee queries. Fixed
+  in the prompt (copy character for character; an advice request is one topic) and in code
+  (the one-query case is always the question), so "single-topic questions return themselves
+  unchanged" holds by construction.
+- **Retrieval.** The firm filter is matched on the original question, not on the sub-queries,
+  so every sub-query gets the same filter even if the model drops a firm name. Each sub-query
+  gets the normal retrieval (firm groups, rerank, interleave to `rerank_top_n`); results are
+  merged with `merge_unique` (round-robin, first appearance wins, up to `rerank_top_n`). With 2
+  sub-queries and n=6 that is about 3 + 3, so the fee half cannot crowd out the enforcement
+  half (the q018 failure). A chunk found by both is kept once and the next chunk takes the
+  slot. Each sub-query is reranked against itself, so `rerank_score` values from different
+  sub-queries are not comparable in the merged list (matters only if M9's threshold is built).
+- **Generation.** The generator, verifier and judge still see the original question.
+- **Default.** `enable_decomposition = True` after the dev eval: q018 goes from a recall miss
+  and correctness 0.20 to a hit and 1.00, no other question changed, and it costs about 0.6 s
+  p50 and $0.0015 per query. The basis is one question that also motivated the design (the
+  prompt's "fees AND disciplinary history" example mirrors it), so this is weak evidence; it is
+  a one-line revert in `config.py`.
+- **Variants set every optional flag explicitly.** Flipping this default would otherwise have
+  turned decomposition on inside `dense`, `hybrid`, `baseline` and `+verifier`, silently
+  changing the ablation (caught before the final rerun). Those four now set
+  `enable_decomposition: False`, and a unit test requires every variant to set the verifier,
+  decomposition and policy flags. All six variants were rerun on dev after this; quality
+  metrics were identical, latency differs by run-to-run noise.
+
+## M7: Verifier eval result
+
+No effect on dev: baseline faithfulness is already 100% (judge), the verifier changed none of
+the 14 answers, and it adds about 2.1 s p50 and $0.0065 per query. Explained by the ceiling,
+not by a defect (the integration test removes an injected fabricated number). The verifier
+stays on by default per PLAN.md; whether that is worth its cost is a demo-narrative decision
+for Jasmeet, and the same-model caveat under "M7: Verifier design" still applies.

@@ -19,8 +19,8 @@ from agentguard.models import (
 
 
 def settings(**overrides: object) -> Settings:
-    """Verifier off unless a test turns it on: most tests here are about the baseline graph."""
-    flags = {"enable_verifier": False} | overrides
+    """Verifier and decomposition off unless a test turns them on: most tests here are about the baseline graph."""
+    flags = {"enable_verifier": False, "enable_decomposition": False} | overrides
     return Settings(anthropic_api_key="sk-test", **flags)  # type: ignore[arg-type]
 
 
@@ -44,9 +44,17 @@ class FakeRetriever:
     def __init__(self, results: list[RetrievedChunk]) -> None:
         self.results = results
         self.calls: list[str] = []
+        self.sub_queries: list[str] | None = None
 
-    def retrieve(self, query: str, trace: Trace, mode: str | None = None) -> list[RetrievedChunk]:
+    def retrieve(
+        self,
+        query: str,
+        trace: Trace,
+        mode: str | None = None,
+        sub_queries: list[str] | None = None,
+    ) -> list[RetrievedChunk]:
         self.calls.append(query)
+        self.sub_queries = sub_queries
         return self.results
 
 
@@ -77,6 +85,18 @@ class FakeVerifier:
         return self.outcome
 
 
+class FakeDecomposer:
+    """Returns canned sub-queries and records the questions it was asked to split."""
+
+    def __init__(self, sub_queries: list[str] | None = None) -> None:
+        self.sub_queries = sub_queries or ["sub one", "sub two"]
+        self.calls: list[str] = []
+
+    def decompose(self, question: str, trace: Trace) -> list[str]:
+        self.calls.append(question)
+        return self.sub_queries
+
+
 @pytest.mark.parametrize("flag", sorted(UNIMPLEMENTED_NODES))
 def test_enabling_an_unimplemented_node_raises_naming_its_milestone(flag: str) -> None:
     retrieved = [RetrievedChunk(chunk=make_chunk())]
@@ -87,6 +107,7 @@ def test_enabling_an_unimplemented_node_raises_naming_its_milestone(flag: str) -
             FakeRetriever(retrieved),
             FakeGenerator(output),
             FakeVerifier(),
+            FakeDecomposer(),
         )  # type: ignore[arg-type]
     assert flag in str(exc_info.value)
     assert UNIMPLEMENTED_NODES[flag] in str(exc_info.value)
@@ -95,7 +116,13 @@ def test_enabling_an_unimplemented_node_raises_naming_its_milestone(flag: str) -
 def test_default_settings_build_without_raising() -> None:
     retrieved = [RetrievedChunk(chunk=make_chunk())]
     output = GeneratorOutput(refused=False, sentences=[])
-    graph = build_graph(settings(), FakeRetriever(retrieved), FakeGenerator(output), FakeVerifier())  # type: ignore[arg-type]
+    graph = build_graph(
+        settings(),
+        FakeRetriever(retrieved),
+        FakeGenerator(output),
+        FakeVerifier(),
+        FakeDecomposer(),
+    )  # type: ignore[arg-type]
     assert graph is not None
 
 
@@ -103,14 +130,22 @@ def _invoke(
     retriever: FakeRetriever,
     generator: FakeGenerator,
     verifier: FakeVerifier | None = None,
+    decomposer: FakeDecomposer | None = None,
     **flags: object,
 ) -> Answer:
-    graph = build_graph(settings(**flags), retriever, generator, verifier or FakeVerifier())  # type: ignore[arg-type]
+    graph = build_graph(
+        settings(**flags),
+        retriever,  # type: ignore[arg-type]
+        generator,  # type: ignore[arg-type]
+        verifier or FakeVerifier(),  # type: ignore[arg-type]
+        decomposer or FakeDecomposer(),  # type: ignore[arg-type]
+    )
     trace = Trace(query_id=uuid.uuid4().hex)
     result = graph.invoke(
         {
             "question": "What fees does Acme charge?",
             "trace": trace,
+            "sub_queries": [],
             "retrieved": [],
             "generator_output": None,
             "verification": [],
@@ -266,8 +301,45 @@ def test_generator_refusal_skips_the_verifier() -> None:
 
 
 def test_topology_gains_a_verify_node_only_when_enabled() -> None:
-    args = (FakeRetriever([]), FakeGenerator(GeneratorOutput(refused=False)), FakeVerifier())
+    args = (
+        FakeRetriever([]),
+        FakeGenerator(GeneratorOutput(refused=False)),
+        FakeVerifier(),
+        FakeDecomposer(),
+    )
     off = build_graph(settings(enable_verifier=False), *args)  # type: ignore[arg-type]
     on = build_graph(settings(enable_verifier=True), *args)  # type: ignore[arg-type]
     assert "verify" not in off.get_graph().nodes
     assert "verify" in on.get_graph().nodes
+
+
+def test_decomposition_off_never_calls_the_decomposer_and_retrieves_the_question() -> None:
+    retriever = FakeRetriever([RetrievedChunk(chunk=make_chunk())])
+    decomposer = FakeDecomposer()
+    _invoke(retriever, FakeGenerator(GeneratorOutput(refused=True)), decomposer=decomposer)
+    assert decomposer.calls == []
+    assert retriever.sub_queries is None
+
+
+def test_decomposition_on_passes_sub_queries_to_retriever_but_generates_from_question() -> None:
+    retriever = FakeRetriever([RetrievedChunk(chunk=make_chunk())])
+    generator = FakeGenerator(GeneratorOutput(refused=True))
+    decomposer = FakeDecomposer(["fees", "SEC action"])
+    _invoke(retriever, generator, decomposer=decomposer, enable_decomposition=True)
+    assert decomposer.calls == ["What fees does Acme charge?"]
+    assert retriever.sub_queries == ["fees", "SEC action"]
+    assert retriever.calls == ["What fees does Acme charge?"]  # the firm filter comes from this
+    assert generator.calls[0][0] == "What fees does Acme charge?"
+
+
+def test_topology_gains_a_decompose_node_only_when_enabled() -> None:
+    args = (
+        FakeRetriever([]),
+        FakeGenerator(GeneratorOutput(refused=False)),
+        FakeVerifier(),
+        FakeDecomposer(),
+    )
+    off = build_graph(settings(enable_decomposition=False), *args)  # type: ignore[arg-type]
+    on = build_graph(settings(enable_decomposition=True), *args)  # type: ignore[arg-type]
+    assert "decompose" not in off.get_graph().nodes
+    assert "decompose" in on.get_graph().nodes

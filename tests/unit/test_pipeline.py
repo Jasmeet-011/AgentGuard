@@ -114,6 +114,7 @@ def test_allowed_override_fields_matches_the_spec(loaders: dict[str, MagicMock])
         "enable_policy_guard",
         "enable_verifier",
         "enable_score_threshold",
+        "enable_decomposition",
         "min_rerank_score",
         "verifier_max_drop_ratio",
         "generator_model",

@@ -9,6 +9,7 @@ from agentguard.retrieval.retriever import (
     Retriever,
     StaleIndexError,
     interleave,
+    merge_unique,
 )
 
 FIRMS = {
@@ -210,3 +211,41 @@ def test_stale_index_fails_loudly() -> None:
     retriever, *_ = build(["ghost-p1-0"], [])
     with pytest.raises(StaleIndexError, match="rerun `agentguard ingest`"):
         retriever.retrieve("fees", Trace(query_id="q"), mode="dense")
+
+
+def rc(chunk_id: str) -> RetrievedChunk:
+    return RetrievedChunk(chunk=next(c for c in CHUNKS if c.chunk_id == chunk_id))
+
+
+def test_merge_unique_round_robins_and_skips_duplicates() -> None:
+    a = [rc("acme-p1-0"), rc("acme-p1-1"), rc("acme-p1-2")]
+    b = [rc("acme-p1-1"), rc("zeta-p1-0"), rc("zeta-p1-1")]
+    assert ids(merge_unique([a, b], 4)) == ["acme-p1-0", "acme-p1-1", "zeta-p1-0", "acme-p1-2"]
+
+
+def test_merge_unique_fills_from_the_longer_group_and_stops_at_n() -> None:
+    a = [rc("acme-p1-0")]
+    b = [rc("zeta-p1-0"), rc("zeta-p1-1"), rc("zeta-p1-2")]
+    assert ids(merge_unique([a, b], 3)) == ["acme-p1-0", "zeta-p1-0", "zeta-p1-1"]
+    assert ids(merge_unique([a, b], 10)) == ["acme-p1-0", "zeta-p1-0", "zeta-p1-1", "zeta-p1-2"]
+
+
+def test_sub_queries_each_search_with_the_same_firm_filter_and_merge_to_top_n() -> None:
+    retriever, dense, _, _ = build(ALL_IDS, ALL_IDS, rerank_top_n=4)
+    results = retriever.retrieve(
+        "acme fees and sec action",
+        Trace(query_id="q"),
+        mode="dense",
+        sub_queries=["acme fees", "acme sec action"],
+    )
+    assert [doc for _, doc in dense.calls] == [["acme"], ["acme"]]  # both filtered to acme
+    assert len(results) == 4 and len(set(ids(results))) == 4
+
+
+def test_sub_queries_are_recorded_on_the_trace_only_when_there_are_several() -> None:
+    retriever, _, _, _ = build(ALL_IDS, ALL_IDS)
+    trace = Trace(query_id="q")
+    retriever.retrieve("acme fees", trace, mode="dense", sub_queries=["acme fees"])
+    retriever.retrieve("acme x y", trace, mode="dense", sub_queries=["acme x", "acme y"])
+    assert "sub_queries" not in trace.events[0].detail
+    assert trace.events[1].detail["sub_queries"] == ["acme x", "acme y"]

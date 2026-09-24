@@ -60,6 +60,24 @@ def interleave(groups: list[list[RetrievedChunk]], n: int) -> list[RetrievedChun
     return selected[:n]
 
 
+def merge_unique(groups: list[list[RetrievedChunk]], n: int) -> list[RetrievedChunk]:
+    """Round-robin up to `n` chunks across ranked groups, skipping chunk_ids already taken.
+
+    Used to merge the results of several sub-queries: each sub-query's best chunk comes first,
+    and a chunk found by more than one sub-query is kept once (at its first appearance).
+    """
+    selected: list[RetrievedChunk] = []
+    seen: set[str] = set()
+    depth = 0
+    while len(selected) < n and any(depth < len(g) for g in groups):
+        for group in groups:
+            if depth < len(group) and group[depth].chunk.chunk_id not in seen:
+                seen.add(group[depth].chunk.chunk_id)
+                selected.append(group[depth])
+        depth += 1
+    return selected[:n]
+
+
 class Retriever:
     """Hybrid retriever over the indexed ADV chunks, with a firm filter from the query."""
 
@@ -93,21 +111,30 @@ class Retriever:
         )
 
     def retrieve(
-        self, query: str, trace: Trace, mode: RetrievalMode | None = None
+        self,
+        query: str,
+        trace: Trace,
+        mode: RetrievalMode | None = None,
+        sub_queries: list[str] | None = None,
     ) -> list[RetrievedChunk]:
         """Top `rerank_top_n` chunks for `query` (mode defaults to `settings.retrieval_mode`).
 
         If the query names firms, results are filtered to them. With 2+ firms, candidates are
         retrieved per firm and the final slots are split evenly across firms.
+
+        With `sub_queries`, each is retrieved on its own (same firm filter, taken from `query`),
+        and the results are merged round-robin, deduplicated, up to `rerank_top_n`.
         """
         mode = mode or self._settings.retrieval_mode
+        queries = sub_queries or [query]
         with trace_node(trace, "retrieve") as event:
             firm_slugs = match_firms(query, self._firms)
             # One group per named firm; a single group over the whole corpus if none is named.
             groups: list[list[str] | None] = [[s] for s in firm_slugs] or [None]
             stats = _Stats()
-            ranked = [self._rank_group(query, mode, g, len(groups), stats) for g in groups]
-            results = interleave(ranked, self._settings.rerank_top_n)
+            n = self._settings.rerank_top_n
+            per_query = [self._retrieve_one(q, mode, groups, stats) for q in queries]
+            results = per_query[0] if len(per_query) == 1 else merge_unique(per_query, n)
             event.detail = {
                 "mode": mode,
                 "firm_filter": firm_slugs or None,
@@ -116,8 +143,17 @@ class Retriever:
                 "returned": len(results),
                 "returned_per_firm": dict(Counter(r.chunk.doc_id for r in results)),
             }
-            logger.debug("retrieve %r -> %s", query, event.detail)
+            if len(queries) > 1:
+                event.detail["sub_queries"] = queries
+            logger.debug("retrieve %r -> %s", queries, event.detail)
         return results
+
+    def _retrieve_one(
+        self, query: str, mode: RetrievalMode, groups: list[list[str] | None], stats: "_Stats"
+    ) -> list[RetrievedChunk]:
+        """Top `rerank_top_n` for one query, split across the firm groups."""
+        ranked = [self._rank_group(query, mode, g, len(groups), stats) for g in groups]
+        return interleave(ranked, self._settings.rerank_top_n)
 
     def _rank_group(
         self,

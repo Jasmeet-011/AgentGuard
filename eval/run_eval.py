@@ -15,30 +15,48 @@ from eval.records import FactVerdictRecord, QuestionResult, RunResult, SentenceV
 logger = logging.getLogger(__name__)
 
 # A variant is a named set of `Pipeline.with_overrides` fields. All optional components stay
-# off in these three; "+verifier" is the baseline plus the verifier. Later milestones add
-# "+policy", "+threshold" and "full".
+# off in the first three; "+verifier", "+decompose" and "+verifier+decompose" add those to the
+# baseline. Later milestones add "+policy", "+threshold" and "full".
 VARIANTS: dict[str, dict[str, object]] = {
     "dense": {
         "retrieval_mode": "dense",
         "enable_verifier": False,
+        "enable_decomposition": False,
         "enable_policy_guard": False,
         "enable_score_threshold": False,
     },
     "hybrid": {
         "retrieval_mode": "hybrid",
         "enable_verifier": False,
+        "enable_decomposition": False,
         "enable_policy_guard": False,
         "enable_score_threshold": False,
     },
     "baseline": {
         "retrieval_mode": "hybrid_rerank",
         "enable_verifier": False,
+        "enable_decomposition": False,
         "enable_policy_guard": False,
         "enable_score_threshold": False,
     },
     "+verifier": {
         "retrieval_mode": "hybrid_rerank",
         "enable_verifier": True,
+        "enable_decomposition": False,
+        "enable_policy_guard": False,
+        "enable_score_threshold": False,
+    },
+    "+decompose": {
+        "retrieval_mode": "hybrid_rerank",
+        "enable_verifier": False,
+        "enable_decomposition": True,
+        "enable_policy_guard": False,
+        "enable_score_threshold": False,
+    },
+    "+verifier+decompose": {
+        "retrieval_mode": "hybrid_rerank",
+        "enable_verifier": True,
+        "enable_decomposition": True,
         "enable_policy_guard": False,
         "enable_score_threshold": False,
     },
@@ -108,6 +126,7 @@ def _config_snapshot(settings: Settings) -> dict[str, object]:
         "generator_model": settings.generator_model,
         "judge_model": settings.judge_model,
         "enable_verifier": settings.enable_verifier,
+        "enable_decomposition": settings.enable_decomposition,
         "enable_policy_guard": settings.enable_policy_guard,
         "enable_score_threshold": settings.enable_score_threshold,
         "min_rerank_score": settings.min_rerank_score,
