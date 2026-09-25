@@ -794,3 +794,12 @@ partial answers.)
   reason, so the difference is invisible in the headline table.
 - **q030 (policy)** is refused by the baseline too, but with reason `insufficient_evidence`
   (the generator refused), so "reason = policy" is 0% for baseline and 100% for `full`.
+
+## M10: `enable_verifier` defaults to False
+
+- The verifier is now off by default and kept as a toggle. Measured on dev and on test, `full`
+  and `full` minus the verifier give identical quality: faithfulness was already 100% and the
+  verifier removed nothing. It costs about +2.1 s at p50 and +$0.0065 per query.
+- No eval was rerun for this change. The existing results already show the two configurations
+  are identical in quality; eval variants set every optional flag explicitly, so their numbers
+  and definitions are unaffected. The UI sidebar can switch the verifier on live.

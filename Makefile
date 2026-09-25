@@ -22,7 +22,7 @@ eval:
 	uv run agentguard eval --split dev
 
 app:
-	@echo "streamlit app is not implemented until M10" && exit 1
+	uv run streamlit run app/streamlit_app.py
 
 mcp:
 	@echo "mcp server is not implemented until M12" && exit 1

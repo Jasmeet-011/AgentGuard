@@ -57,11 +57,11 @@ class Settings(BaseSettings):
     # PLAN.md's baseline. "dense" and "hybrid" are ablation variants (DECISIONS.md M3).
     retrieval_mode: Literal["dense", "hybrid", "hybrid_rerank"] = "hybrid_rerank"
 
-    # Each flag flips to True when its node lands and its eval is recorded: verify (M7) and
-    # policy_guard (M8) are on; threshold_check (M9) stays off, and `graph.build_graph` raises
-    # if it is on with no node.
+    # policy_guard (M8) is on. The verifier (M7) is off by default: no measured effect on dev or
+    # test, +2.1 s and +$0.0065 per query (DECISIONS.md, M10). threshold_check (M9) stays off, and
+    # `graph.build_graph` raises if it is on with no node.
     enable_policy_guard: bool = True
-    enable_verifier: bool = True
+    enable_verifier: bool = False
     enable_score_threshold: bool = False
     # Query decomposition (M7): on since its dev eval landed (fixes q018; DECISIONS.md).
     enable_decomposition: bool = True

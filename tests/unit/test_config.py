@@ -86,8 +86,8 @@ def test_overlap_just_below_target_is_allowed() -> None:
     assert Settings(chunk_target_tokens=400, chunk_overlap_tokens=399).chunk_overlap_tokens == 399
 
 
-def test_verifier_and_policy_guard_are_on_by_default_and_the_threshold_stays_off() -> None:
+def test_policy_guard_is_on_by_default_and_the_verifier_and_threshold_are_off() -> None:
     settings = Settings(anthropic_api_key="sk-test")
-    assert settings.enable_verifier is True
+    assert settings.enable_verifier is False
     assert settings.enable_policy_guard is True
     assert settings.enable_score_threshold is False

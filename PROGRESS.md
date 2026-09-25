@@ -12,7 +12,7 @@
 | M7. Verifier agent (+ query decomposition) | DONE |
 | M8. Policy guard | DONE |
 | M9. Evidence threshold and final test-set run | DONE (threshold skipped by decision; test-set run done) |
-| M10. Streamlit UI: Ask tab | TODO |
+| M10. Streamlit UI: Ask tab | DONE |
 | M11. Streamlit UI: Evals tab | TODO |
 | M12. MCP server | CUT |
 | M13. Demo hardening and code freeze | TODO |
@@ -763,6 +763,40 @@ only checks `refused`.
 
 **Deferred:** the evidence threshold (skipped by decision). Not fixed, per the no-tuning rule:
 q015's retrieval miss and the recall metric's page-blind matching.
+
+---
+
+## M10 details
+
+**What was built:**
+- `app/streamlit_app.py` (`make app`): Ask tab. Sidebar: retrieval mode, verifier, decomposition,
+  policy guard. `Resources` load once via `st.cache_resource`; each toggle combination is a
+  `Pipeline.with_overrides` over them (also cached), so toggling never reloads a model. Dropdown of
+  the 7 specified demo questions plus a free-text box. Answer sentences carry superscript
+  citation markers; each citation is an expander with firm, item, doc_type, pages, chunk_id and
+  chunk text. Sub-queries shown when decomposition split the question. Refusals show reason and
+  policy category. "Removed by verifier" is a collapsed section with reasons. Trace panel: per-node
+  ms with a time bar, tokens, cost; cached events show the original values with a "cached" tag.
+- `src/agentguard/ui.py`: Streamlit-free view-model helpers (demo questions, citation numbering,
+  trace rows, sub-queries, policy category), unit-tested in `tests/unit/test_ui.py` (6 tests).
+- `enable_verifier` default is now False (DECISIONS.md, M10); `test_config` updated to match.
+  No evals rerun; eval variants set the flag explicitly.
+
+**Test results:** `make check` -> ruff clean, 306 unit tests passed.
+
+**Acceptance (driven through the real app with Streamlit AppTest, verifier off = new default):**
+all 7 demo questions ran without errors: Q1 $500,000 with 2 citations; Q2 Vanguard's SEC
+settlement; Q3 decomposed into 2 sub-queries with 2 citations (Item 5 p11, Item 9 p32); Q4
+comparison citing Wealthfront and Betterment; Q5 refused (insufficient_evidence); Q6 refused
+(policy, pii_request); Q7 answered from Atwood's cover page. Q3 with decomposition off: 3 sentences,
+fee only, no SEC part, no sub-queries; back on: fee plus the 2018 SEC settlement. `streamlit run`
+starts and answers its health check.
+
+**Timing:** 1.6 to 5.7 s per query, but mostly LLM-cache hits (questions had been run before), so
+this understates a live cold run. Not measured uncached. Verifier toggle was not exercised in this
+run; the verifier view was covered by unit tests only, since no answer had removed sentences.
+
+**Deferred:** Evals tab (M11). A browser visual check was not done.
 
 ---
 
