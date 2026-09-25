@@ -148,7 +148,9 @@ def _print_answer(answer: Answer) -> None:
         console.print(f"{sentence.text} [dim]^{','.join(marks)}[/dim]{tag}")
     _print_removed(answer)
     if answer.partial_note:
-        console.print(f"\n[yellow]Not covered by the documents:[/yellow] {answer.partial_note}")
+        console.print(
+            f"\n[yellow]Not found in the retrieved passages:[/yellow] {answer.partial_note}"
+        )
     if footnote_numbers:
         console.print("\nSources:")
         for chunk_id, n in footnote_numbers.items():

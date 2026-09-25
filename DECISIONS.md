@@ -820,3 +820,8 @@ partial answers.)
 - Citation expanders show the chunk text without its retrieval header line ("{firm} | Item N:
   title"), which the metadata above already shows. Display only (`ui.strip_header`); stored
   chunks and what the generator sees are unchanged.
+
+## M10: CLI partial_note label
+
+- `agentguard ask` now prints "Not found in the retrieved passages:" for `partial_note`, matching
+  the UI, for the same reason: the note describes what retrieval returned, not what the filings hold.
