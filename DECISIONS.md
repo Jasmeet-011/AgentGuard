@@ -825,3 +825,27 @@ partial answers.)
 
 - `agentguard ask` now prints "Not found in the retrieved passages:" for `partial_note`, matching
   the UI, for the same reason: the note describes what retrieval returned, not what the filings hold.
+
+## M11: Evals tab
+
+- The tab only reads `eval/results` (latest run per split and variant, via `report.latest_runs`)
+  and formats with `report.fmt`, the formatter behind `latest_comparison.md`. A unit test parses
+  that file and asserts every dev-table value and headline card equals its cell. No eval is run
+  or recomputed in the UI.
+- Sample sizes: recall, correctness and false refusal use answerable n; faithfulness uses the
+  answerable questions that were not refused; correct refusal uses unanswerable n; the policy
+  metric uses policy n; latency and cost use all questions.
+- Dev table shows dense, hybrid, baseline, +verifier, +decompose, +verifier+decompose, full, as
+  specified. `+policy` is left out: it has the same overrides as `full` (M9).
+- Deltas on the cards are `full` minus `baseline` in percentage points, ms or USD. Colour is green
+  when the difference is in the good direction, red when bad (latency, cost and false refusal
+  count lower as good), and grey when it is exactly zero.
+- The failures browser lists answerable questions with correctness or faithfulness below 1.0, which
+  is stricter than `report.is_failure` (correctness < 0.5), as specified for this tab.
+- The chart is one figure with two panels (correctness in %, cost per query in USD) because the two
+  measures have different units; a shared axis or dual axis would mislead.
+- `ProbeResult` and `ProbeRun` moved from `eval/probes.py` to `eval/records.py` (re-imported by
+  probes.py). Importing them from probes.py pulled in the LLM stack and added 1.4 s to the tab.
+- `app/streamlit_app.py` imports `agentguard.pipeline` (torch) only when the first question is
+  asked, so the Evals tab does not wait for it. Cold page load in AppTest went from 14 s to 1.5 s
+  (warm reruns 0.3 s); the first Ask click now pays the model load.

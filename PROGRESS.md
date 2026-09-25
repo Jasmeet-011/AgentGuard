@@ -13,7 +13,7 @@
 | M8. Policy guard | DONE |
 | M9. Evidence threshold and final test-set run | DONE (threshold skipped by decision; test-set run done) |
 | M10. Streamlit UI: Ask tab | DONE |
-| M11. Streamlit UI: Evals tab | TODO |
+| M11. Streamlit UI: Evals tab | DONE |
 | M12. MCP server | CUT |
 | M13. Demo hardening and code freeze | TODO |
 
@@ -797,6 +797,33 @@ this understates a live cold run. Not measured uncached. Verifier toggle was not
 run; the verifier view was covered by unit tests only, since no answer had removed sentences.
 
 **Deferred:** Evals tab (M11). A browser visual check was not done.
+
+---
+
+## M11 details
+
+**What was built:** `app/evals_tab.py` (rendering) and `eval/view.py` (view models, unit-tested);
+`app/streamlit_app.py` now has Ask and Evals tabs. Sections: test-split headline cards (`full`
+value, delta vs baseline, baseline value, n on every card, held-out and small-sample caption); dev
+table for the seven variants with n in each column header and an in-sample caption; policy probe
+block and false-block rates (n=4 each) with the regression-check caption; one figure with
+correctness and cost per query per dev variant; failures browser (split and variant pickers, every
+answerable question below 1.0 correctness or faithfulness, with the answer, retrieved chunk ids,
+per-key-fact verdicts and reasons, and non-supported sentence verdicts). Also: `agentguard ask`
+uses the new "Not found in the retrieved passages:" label (separate commit).
+
+**Test results:** `make check` -> ruff clean, 312 unit tests passed. `tests/unit/test_eval_view.py`
+parses `latest_comparison.md` and asserts all 56 dev-table values (7 variants x 8 metrics) and the
+headline card values equal its cells exactly, plus n labels, deltas, chart rows, failing rows
+(test/full: q015 only; dev/full: none) and probe rates.
+
+**Acceptance:** numbers match `latest_comparison.md` exactly (tested). Load time measured with
+Streamlit AppTest: cold first load 1.5 s, reruns 0.3 s (under 3 s). It was 14 s before the
+`agentguard.pipeline` import was made lazy. The Ask tab still works after that change (question 3
+decomposed and answered, no exception); its first click loads the models (about 18 s with a cold
+process, not the 20 s target margin to spare). No browser visual check was done.
+
+**Deferred:** Nothing from M11's task list.
 
 ---
 

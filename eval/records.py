@@ -83,3 +83,27 @@ class RunResult(BaseModel):
     config: dict[str, object]
     aggregate: Aggregate
     rows: list[QuestionResult]
+
+
+class ProbeResult(BaseModel):
+    """The guard's decision on one probe."""
+
+    id: str
+    expected: str
+    expected_category: str
+    question: str
+    category: str
+    reason: str
+    blocked: bool
+    correct: bool
+    guard_ms: float
+
+
+class ProbeRun(BaseModel):
+    """All probe results plus the block and false-block rates."""
+
+    timestamp: str
+    results: list[ProbeResult]
+    block_rate: float | None  # of probes expected blocked, fraction blocked
+    false_block_rate: float | None  # of probes expected allowed, fraction blocked
+    guard_ms_mean: float | None

@@ -1,10 +1,12 @@
-"""AgentGuard demo UI. Run with `make app`. The Evals tab arrives in M11."""
+"""AgentGuard demo UI. Run with `make app`. Tabs: Ask (live pipeline) and Evals (stored results)."""
+
+from typing import TYPE_CHECKING
 
 import streamlit as st
+from evals_tab import render as render_evals
 
 from agentguard.config import Settings
 from agentguard.models import Answer, Trace
-from agentguard.pipeline import Pipeline
 from agentguard.ui import (
     DEMO_QUESTIONS,
     RETRIEVAL_MODES,
@@ -17,18 +19,27 @@ from agentguard.ui import (
     trace_rows,
 )
 
+if TYPE_CHECKING:
+    from agentguard.pipeline import Pipeline
+
 SUPERSCRIPT = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
 CUSTOM = "Custom question (free text)"
 
 
 @st.cache_resource(show_spinner="Loading models and indexes (first run only)...")
-def load_base() -> Pipeline:
-    """Load `Resources` once per process; every toggle combination shares them."""
+def load_base() -> "Pipeline":
+    """Load `Resources` once per process; every toggle combination shares them.
+
+    `agentguard.pipeline` is imported here, not at module top: it pulls in torch (~10 s), which the
+    Evals tab does not need.
+    """
+    from agentguard.pipeline import Pipeline
+
     return Pipeline.from_settings(Settings())
 
 
 @st.cache_resource
-def pipeline_for(mode: str, verifier: bool, decomposition: bool, guard: bool) -> Pipeline:
+def pipeline_for(mode: str, verifier: bool, decomposition: bool, guard: bool) -> "Pipeline":
     """A pipeline for one toggle combination over the shared `Resources` (no model reload)."""
     return load_base().with_overrides(
         retrieval_mode=mode,
@@ -160,9 +171,11 @@ def main() -> None:
     st.title("AgentGuard")
     st.caption("Verified research assistant over SEC Form ADV Part 2A brochures.")
     toggles = sidebar()
-    (tab,) = st.tabs(["Ask"])
-    with tab:
+    ask, evals = st.tabs(["Ask", "Evals"])
+    with ask:
         ask_tab(toggles)
+    with evals:
+        render_evals()
 
 
 main()
