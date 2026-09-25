@@ -6,6 +6,7 @@ import altair as alt
 import streamlit as st
 
 from agentguard.config import PROJECT_ROOT, Settings
+from agentguard.ui import escape_dollars
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))  # the repo-root `eval` package is not installed
@@ -131,8 +132,10 @@ def show_failures(runs: dict[tuple[str, str], RunResult]) -> None:
     for row in rows:
         c = "n/a" if row.correctness is None else f"{row.correctness:.2f}"
         f = "n/a" if row.faithfulness is None else f"{row.faithfulness:.2f}"
-        with st.expander(f"{row.id}: {row.question} (correctness {c}, faithfulness {f})"):
-            st.markdown(f"**Answer:** {row.answer_text or '(refused)'}")
+        with st.expander(
+            f"{row.id}: {escape_dollars(row.question)} (correctness {c}, faithfulness {f})"
+        ):
+            st.markdown(f"**Answer:** {escape_dollars(row.answer_text or '(refused)')}")
             st.markdown(
                 "**Retrieved chunk ids:** " + ", ".join(f"`{i}`" for i in row.retrieved_chunk_ids)
             )

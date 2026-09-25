@@ -11,6 +11,7 @@ from agentguard.ui import (
     DEMO_QUESTIONS,
     RETRIEVAL_MODES,
     demo_label,
+    escape_dollars,
     policy_category,
     removed_with_reasons,
     render_answer,
@@ -63,7 +64,7 @@ def show_sub_queries(trace: Trace) -> None:
 
 def show_citation(number: int, label: str, chunk_text: str, details: str) -> None:
     with st.expander(f"{str(number).translate(SUPERSCRIPT)} {label}"):
-        st.markdown(details)
+        st.markdown(escape_dollars(details))
         st.text(chunk_text)
 
 
@@ -71,16 +72,16 @@ def show_refusal(answer: Answer, trace: Trace) -> None:
     category = policy_category(trace) if answer.refusal_reason == "policy" else None
     suffix = f", category: {category}" if category else ""
     st.error(f"**Refused** (reason: {answer.refusal_reason}{suffix})")
-    st.write(answer.refusal_message)
+    st.markdown(escape_dollars(answer.refusal_message or ""))
 
 
 def show_sentences(answer: Answer) -> None:
     rendered = render_answer(answer)
     for s in rendered.sentences:
         note = " *(partially supported)*" if s.partial else ""
-        st.markdown(f"{s.text} **{marker(s.numbers)}**{note}")
+        st.markdown(f"{escape_dollars(s.text)} **{marker(s.numbers)}**{note}")
     if answer.partial_note:
-        st.warning(f"Not found in the retrieved passages: {answer.partial_note}")
+        st.warning(f"Not found in the retrieved passages: {escape_dollars(answer.partial_note)}")
     st.caption("Citations")
     for c in rendered.citations:
         chunk = c.chunk
@@ -157,7 +158,7 @@ def ask_tab(toggles: tuple[str, bool, bool, bool]) -> None:
         question = st.text_input("Question")
     else:
         question = DEMO_QUESTIONS[options.index(choice)]
-        st.write(question)
+        st.markdown(escape_dollars(question))
     if st.button("Ask", type="primary", disabled=not question.strip()):
         load_base()
         with st.spinner("Running pipeline..."):

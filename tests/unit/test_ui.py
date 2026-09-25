@@ -12,6 +12,7 @@ from agentguard.models import (
 from agentguard.ui import (
     DEMO_QUESTIONS,
     demo_label,
+    escape_dollars,
     policy_category,
     removed_with_reasons,
     render_answer,
@@ -127,3 +128,8 @@ def test_strip_header_removes_only_the_retrieval_header_line() -> None:
     assert with_header.text.startswith("Savvy | Item 5")  # stored chunk untouched
     other = c.model_copy(update={"text": "No header here\nbody"})
     assert strip_header(other) == "No header here\nbody"
+
+
+def test_escape_dollars_keeps_both_dollar_signs_out_of_math_mode():
+    assert escape_dollars("$5 million and $10 million") == r"\$5 million and \$10 million"
+    assert escape_dollars("no dollars") == "no dollars"

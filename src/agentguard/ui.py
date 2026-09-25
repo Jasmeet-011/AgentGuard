@@ -43,6 +43,11 @@ class TraceRow(BaseModel):
     cached: bool
 
 
+def escape_dollars(text: str) -> str:
+    """Escape "$" so st.markdown does not treat text between two dollar signs as LaTeX math."""
+    return text.replace("$", r"\$")
+
+
 def strip_header(chunk: Chunk) -> str:
     """Chunk text without its retrieval header line ("{firm} | Item N: title"), for display only."""
     first, sep, rest = chunk.text.partition("\n")
