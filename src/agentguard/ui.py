@@ -29,6 +29,17 @@ DEMO_TAGS: dict[int, str] = {
     6: "allowed",
 }
 
+# Use-case group per demo question index, shown as a prefix in the dropdown label.
+DEMO_GROUPS: dict[int, str] = {
+    0: "Due diligence",
+    1: "Due diligence",
+    2: "Due diligence",
+    3: "Due diligence",
+    4: "Honest refusal",
+    5: "Guardrails",
+    6: "Guardrails",
+}
+
 RETRIEVAL_MODES: tuple[str, ...] = ("dense", "hybrid", "hybrid_rerank")
 
 
@@ -52,10 +63,10 @@ def strip_header(chunk: Chunk) -> str:
 
 
 def demo_label(index: int) -> str:
-    """Dropdown label for demo question `index`: the question plus its tag, if any."""
+    """Dropdown label for demo question `index`: use-case group, the question, and its tag."""
     question = DEMO_QUESTIONS[index]
     tag = DEMO_TAGS.get(index)
-    return f"{index + 1}. {question}" + (f" ({tag})" if tag else "")
+    return f"{DEMO_GROUPS[index]} · {index + 1}. {question}" + (f" ({tag})" if tag else "")
 
 
 def trace_rows(trace: Trace) -> list[TraceRow]:
@@ -143,3 +154,88 @@ def removed_with_reasons(answer: Answer) -> list[tuple[str, str]]:
     """(sentence, reason) for each sentence the verifier removed."""
     unsupported = [v for v in answer.verification if v.verdict == "unsupported"]
     return [(s.text, v.reason) for s, v in zip(answer.removed_sentences, unsupported, strict=True)]
+
+
+class Toggles(BaseModel):
+    """The sidebar switches a query ran with."""
+
+    mode: str
+    verifier: bool
+    decomposition: bool
+    guard: bool
+
+
+class Step(BaseModel):
+    """One line of the pipeline decision strip; `items` are indented sub-lines."""
+
+    name: str
+    text: str
+    items: list[str] = []
+
+
+def _event(trace: Trace, node: str) -> dict | None:
+    for event in trace.events:
+        if event.node == node:
+            return event.detail
+    return None
+
+
+def _guard_step(trace: Trace, toggles: Toggles) -> tuple[Step, bool]:
+    """The policy guard's line, and whether the query was blocked."""
+    if not toggles.guard:
+        return Step(name="Policy guard", text="off"), False
+    category = policy_category(trace)
+    if category and category != "allowed":
+        return Step(name="Policy guard", text=f"blocked: {category}"), True
+    return Step(name="Policy guard", text="allowed"), False
+
+
+def _decompose_step(trace: Trace, toggles: Toggles, blocked: bool) -> Step:
+    name = "Decomposition"
+    if not toggles.decomposition:
+        return Step(name=name, text="off")
+    if blocked:
+        return Step(name=name, text="not run (blocked)")
+    subs = sub_queries(trace)
+    if subs:
+        return Step(name=name, text=f"{len(subs)} sub-queries", items=subs)
+    return Step(name=name, text="1 sub-query (unchanged)")
+
+
+def _retrieval_step(trace: Trace, toggles: Toggles, blocked: bool) -> Step:
+    detail = _event(trace, "retrieve")
+    if detail is None:
+        text = "not run (blocked)" if blocked else "not run"
+        return Step(name="Retrieval", text=f"{toggles.mode}: {text}")
+    return Step(
+        name="Retrieval", text=f"{toggles.mode}, {detail.get('returned', 0)} passages retrieved"
+    )
+
+
+def _verifier_step(answer: Answer, trace: Trace, toggles: Toggles, blocked: bool) -> Step:
+    name = "Verifier"
+    if not toggles.verifier:
+        return Step(name=name, text="off")
+    detail = _event(trace, "verify")
+    if detail is None:
+        return Step(
+            name=name, text="not run (blocked)" if blocked else "not run (no answer to check)"
+        )
+    checked = detail.get("sentences_checked", 0)
+    supported = sum(v.verdict == "supported" for v in answer.verification)
+    text = (
+        f"{supported}/{checked} sentences supported, {detail.get('sentences_removed', 0)} removed"
+    )
+    partial = detail.get("sentences_partial", 0)
+    return Step(name=name, text=text + (f", {partial} partial" if partial else ""))
+
+
+def decision_strip(answer: Answer, trace: Trace, toggles: Toggles) -> list[Step]:
+    """One line per pipeline step for the strip above an answer; toggled-off steps say "off"."""
+    guard, blocked = _guard_step(trace, toggles)
+    return [
+        guard,
+        _decompose_step(trace, toggles, blocked),
+        _retrieval_step(trace, toggles, blocked),
+        _verifier_step(answer, trace, toggles, blocked),
+    ]

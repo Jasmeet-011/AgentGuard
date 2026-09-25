@@ -6,16 +6,18 @@ import streamlit as st
 from evals_tab import render as render_evals
 
 from agentguard.config import Settings
+from agentguard.ingest.firms import load_firms
 from agentguard.models import Answer, Trace
 from agentguard.ui import (
     DEMO_QUESTIONS,
     RETRIEVAL_MODES,
+    Toggles,
+    decision_strip,
     demo_label,
     policy_category,
     removed_with_reasons,
     render_answer,
     strip_header,
-    sub_queries,
     trace_rows,
 )
 
@@ -23,7 +25,17 @@ if TYPE_CHECKING:
     from agentguard.pipeline import Pipeline
 
 SUPERSCRIPT = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
-CUSTOM = "Custom question (free text)"
+INTRO = (
+    "**The problem.** Advisors and compliance teams read long SEC Form ADV filings (fees, "
+    "conflicts, disciplinary history). An assistant that invents a fee number is worse than "
+    "useless.\n\n"
+    "**What AgentGuard does.** It answers with a citation on every sentence, refuses when the "
+    "filings don't say, and blocks advice and personal-information requests."
+)
+CITATION_CAPTION = (
+    "Superscript numbers link each sentence to its numbered source below. "
+    "Expand a source to see the exact text."
+)
 
 
 @st.cache_resource(show_spinner="Loading models and indexes (first run only)...")
@@ -54,11 +66,13 @@ def marker(numbers: list[int]) -> str:
     return "˒".join(str(n).translate(SUPERSCRIPT) for n in numbers)
 
 
-def show_sub_queries(trace: Trace) -> None:
-    subs = sub_queries(trace)
-    if subs:
-        lines = "\n".join(f"{i}. {q}" for i, q in enumerate(subs, 1))
-        st.info(f"**Decomposed into sub-queries:**\n\n{lines}")
+def show_strip(answer: Answer, trace: Trace, toggles: Toggles) -> None:
+    """One line per pipeline step; steps switched off in the sidebar say so."""
+    lines = []
+    for step in decision_strip(answer, trace, toggles):
+        lines.append(f"- **{step.name}:** {step.text}")
+        lines += [f"    - {item}" for item in step.items]
+    st.info("**Pipeline decisions**\n" + "\n".join(lines))
 
 
 def show_citation(number: int, label: str, chunk_text: str, details: str) -> None:
@@ -81,7 +95,7 @@ def show_sentences(answer: Answer) -> None:
         st.markdown(f"{s.text} **{marker(s.numbers)}**{note}")
     if answer.partial_note:
         st.warning(f"Not found in the retrieved passages: {answer.partial_note}")
-    st.caption("Citations")
+    st.caption(CITATION_CAPTION)
     for c in rendered.citations:
         chunk = c.chunk
         item = f"Item {chunk.adv_item}: {chunk.item_title}" if chunk.adv_item else "unlabeled"
@@ -92,8 +106,8 @@ def show_sentences(answer: Answer) -> None:
         show_citation(c.number, c.label, strip_header(chunk), details)
 
 
-def show_answer(answer: Answer, trace: Trace) -> None:
-    show_sub_queries(trace)
+def show_answer(answer: Answer, trace: Trace, toggles: Toggles) -> None:
+    show_strip(answer, trace, toggles)
     if answer.refused:
         show_refusal(answer, trace)
     else:
@@ -150,20 +164,39 @@ def sidebar() -> tuple[str, bool, bool, bool]:
     return mode, verifier, decomposition, guard
 
 
+@st.cache_data
+def firm_names() -> list[str]:
+    return sorted(f.name for f in load_firms(Settings().raw_dir).values())
+
+
+def intro() -> None:
+    with st.container(border=True):
+        st.markdown(INTRO)
+        st.caption("**Firms in the corpus (10):** " + ", ".join(firm_names()))
+
+
 def ask_tab(toggles: tuple[str, bool, bool, bool]) -> None:
-    options = [demo_label(i) for i in range(len(DEMO_QUESTIONS))] + [CUSTOM]
-    choice = st.selectbox("Demo question", options)
-    if choice == CUSTOM:
-        question = st.text_input("Question")
-    else:
-        question = DEMO_QUESTIONS[options.index(choice)]
-        st.write(question)
-    if st.button("Ask", type="primary", disabled=not question.strip()):
-        load_base()
-        with st.spinner("Running pipeline..."):
-            answer, trace = pipeline_for(*toggles).run(question.strip())
-        show_answer(answer, trace)
-        show_trace(trace)
+    intro()
+    with st.form("ask"):
+        options = [demo_label(i) for i in range(len(DEMO_QUESTIONS))]
+        choice = st.selectbox("Demo question", options)
+        typed = st.text_input(
+            "Or type your own question (used instead of the demo question when filled in)"
+        )
+        submitted = st.form_submit_button("Ask", type="primary")
+    if not submitted:
+        return
+    question = typed.strip() or DEMO_QUESTIONS[options.index(choice)]
+    st.markdown(f"**Question:** {question}")
+    load_base()
+    with st.spinner("Running pipeline..."):
+        answer, trace = pipeline_for(*toggles).run(question)
+    show_answer(
+        answer,
+        trace,
+        Toggles(mode=toggles[0], verifier=toggles[1], decomposition=toggles[2], guard=toggles[3]),
+    )
+    show_trace(trace)
 
 
 def main() -> None:
