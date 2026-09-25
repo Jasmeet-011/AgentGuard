@@ -820,8 +820,8 @@ headline card values equal its cells exactly, plus n labels, deltas, chart rows,
 **Acceptance:** numbers match `latest_comparison.md` exactly (tested). Load time measured with
 Streamlit AppTest: cold first load 1.5 s, reruns 0.3 s (under 3 s). It was 14 s before the
 `agentguard.pipeline` import was made lazy. The Ask tab still works after that change (question 3
-decomposed and answered, no exception); its first click loads the models (about 18 s with a cold
-process, not the 20 s target margin to spare). No browser visual check was done.
+decomposed and answered, no exception); its first click loads the models (18 s measured in a cold process, under the
+20 s target but with the LLM cache warm). No browser visual check was done.
 
 **Deferred:** Nothing from M11's task list.
 
