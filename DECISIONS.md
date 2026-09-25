@@ -803,3 +803,11 @@ partial answers.)
 - No eval was rerun for this change. The existing results already show the two configurations
   are identical in quality; eval variants set every optional flag explicitly, so their numbers
   and definitions are unaffected. The UI sidebar can switch the verifier on live.
+
+## M10: Streamlit config
+
+- `.streamlit/config.toml` sets `server.fileWatcherType = "none"` and `client.toolbarMode = "viewer"`.
+  The first silences the torchvision tracebacks Streamlit's file watcher prints at startup (it
+  inspects torch's lazily imported modules); the second hides the Deploy button for the demo.
+- torchvision is not added: nothing in the project uses it.
+- Consequence: Streamlit no longer reloads on source edits, so restart `make app` after changing code.
