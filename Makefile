@@ -1,4 +1,4 @@
-.PHONY: install lint test test-int check ingest eval app mcp
+.PHONY: install lint test test-int check ingest eval app mcp demo
 
 install:
 	uv sync
@@ -26,3 +26,6 @@ app:
 
 mcp:
 	@echo "mcp server is not implemented until M12" && exit 1
+
+demo:
+	HF_HUB_OFFLINE=1 uv run streamlit run app/streamlit_app.py

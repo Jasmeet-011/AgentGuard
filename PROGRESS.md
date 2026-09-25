@@ -15,7 +15,7 @@
 | M10. Streamlit UI: Ask tab | DONE |
 | M11. Streamlit UI: Evals tab | DONE |
 | M12. MCP server | CUT |
-| M13. Demo hardening and code freeze | TODO |
+| M13. Demo hardening and code freeze | DONE (lean version; code freeze) |
 
 ---
 
@@ -824,6 +824,31 @@ decomposed and answered, no exception); its first click loads the models (18 s m
 20 s target but with the LLM cache warm). No browser visual check was done.
 
 **Deferred:** Nothing from M11's task list.
+
+---
+
+## M13 details (lean version)
+
+**Done:** `make demo` (sets `HF_HUB_OFFLINE=1`, launches the app; verified it starts and passes its
+health check); README (problem, text architecture, how to run, test results, what was tried and
+cut, known limitations); DEMO.md (12-minute run-of-show, pre-call checklist, toggles, three numbers);
+tag `v1.0-demo`. Also, before M13: Evals tab shows counts ("1/1 vs 0/1") instead of percentage
+deltas when n < 5 (commit 6299326, tagged `pre-m12-working`).
+
+**Offline check (verify, not build):** all 7 demo questions were run through the app with the
+default toggles to warm the cache, then again with `HF_HUB_OFFLINE=1` and the network simulated
+unreachable (HTTP(S)_PROXY pointed at a dead port). All 7 answered or refused as expected with no
+exceptions: Q1 to Q4 and Q7 answered, Q5 refused (insufficient_evidence), Q6 refused (policy,
+pii_request). Times: 2.0 to 4.3 s per query after the first; first query 14 to 19 s (model load).
+No fix was needed. **Limit:** this simulates an unreachable network rather than disabling the
+adapter, and every call was an LLM-cache hit, so it shows the cache and offline models work, not
+that a live call survives an outage.
+
+**Not covered:** the verifier-on path for Q2 is deliberately left uncached for the demo, so it has
+not been run in the UI; the UI's verifier view was covered by unit tests only.
+
+**Deferred / cut:** M12 (MCP), the M9 threshold, `--offline-demo` flag (not needed, see above), a
+fresh-clone run of the README steps, and the backup screen recording (Jasmeet's).
 
 ---
 

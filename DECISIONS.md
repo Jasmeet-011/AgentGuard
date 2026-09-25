@@ -857,3 +857,13 @@ partial answers.)
   "4/4" and "0/4". Correctness and faithfulness average partial credit per question, so their
   counts can be fractional ("3.5/4"). Card values, the dev table and `latest_comparison.md` are
   unchanged; latency and cost (n=8) keep their ms and USD deltas.
+
+## M13: Lean version
+
+- Offline demo is verified, not built: the LLM cache plus `HF_HUB_OFFLINE=1` already serves the 7
+  demo questions with no network (checked with a dead proxy, not a disabled adapter). No
+  `--offline-demo` flag or "cached" fallback was added; the trace panel already tags cached events.
+- `make demo` = `make app` with `HF_HUB_OFFLINE=1`.
+- The demo's one live, uncached call is the Verifier toggle on question 2, so its cache entry is
+  deliberately not warmed. Every other demo step is cached.
+- README states the eval `full` variant includes the verifier while the app default has it off.
