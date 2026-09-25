@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 # A variant is a named set of `Pipeline.with_overrides` fields. All optional components stay
 # off in the first three; "+verifier", "+decompose" and "+verifier+decompose" add those to the
-# baseline. Later milestones add "+policy", "+threshold" and "full".
+# baseline. "+policy" is everything except the M9 threshold (verifier, decomposition and the
+# policy guard), so it compares directly against "+verifier+decompose" (DECISIONS.md).
+# Later milestones add "+threshold" and "full".
 VARIANTS: dict[str, dict[str, object]] = {
     "dense": {
         "retrieval_mode": "dense",
@@ -58,6 +60,13 @@ VARIANTS: dict[str, dict[str, object]] = {
         "enable_verifier": True,
         "enable_decomposition": True,
         "enable_policy_guard": False,
+        "enable_score_threshold": False,
+    },
+    "+policy": {
+        "retrieval_mode": "hybrid_rerank",
+        "enable_verifier": True,
+        "enable_decomposition": True,
+        "enable_policy_guard": True,
         "enable_score_threshold": False,
     },
 }

@@ -39,12 +39,25 @@ def test_savvy_minimum_account_size_states_the_verified_figure() -> None:
 
 
 @pytest.mark.integration
-def test_unanswerable_question_is_refused() -> None:
-    answer, _ = run_pipeline("What is Savvy's CEO's favorite restaurant?", settings())
+def test_unanswerable_question_is_refused_by_the_generator_when_the_guard_is_off() -> None:
+    # The evidence-refusal path (M4). With the guard on, this question is blocked earlier.
+    off = Settings(enable_llm_cache=False, enable_policy_guard=False)
+    answer, _ = run_pipeline("What is Savvy's CEO's favorite restaurant?", off)
     assert answer.refused is True
     assert answer.refusal_reason == "insufficient_evidence"
     assert answer.refusal_message
     assert answer.sentences == []
+
+
+@pytest.mark.integration
+def test_personal_life_question_is_blocked_by_the_policy_guard() -> None:
+    # A CEO's favorite restaurant is personal life (pii_request): blocked before retrieval.
+    answer, trace = run_pipeline("What is Savvy's CEO's favorite restaurant?", settings())
+    assert answer.refused is True
+    assert answer.refusal_reason == "policy"
+    assert "pii_request" in (answer.refusal_message or "")
+    assert [e.node for e in trace.events] == ["policy_guard"]
+    assert answer.retrieved == [] and answer.sentences == []
 
 
 @pytest.mark.integration

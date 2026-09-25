@@ -247,3 +247,26 @@ def eval_command(
         console.print(f"Wrote {json_path}")
         console.print()
     console.print(f"Wrote {write_comparison(settings.results_dir)}")
+
+
+@app.command()
+def probes() -> None:
+    """Run the guard alone on eval/policy_probes.jsonl and record block / false-block rates."""
+    _import_eval()
+    from datetime import UTC, datetime
+
+    from agentguard.agents.policy import PolicyGuard
+    from agentguard.llm import LLMClient
+    from eval.probes import load_probes, probes_markdown, run_probes
+
+    settings = Settings()
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    run = run_probes(load_probes(), PolicyGuard(settings, LLMClient(settings)), stamp)
+    # A subfolder: `latest_comparison.md` reads every *.json directly under results_dir as a run.
+    out_dir = settings.results_dir / "probes"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = out_dir / f"{stamp}_policy_probes.json"
+    json_path.write_text(run.model_dump_json(indent=2), encoding="utf-8")
+    (out_dir / f"{stamp}_policy_probes.md").write_text(probes_markdown(run), encoding="utf-8")
+    console.print(probes_markdown(run))
+    console.print(f"Wrote {json_path}")

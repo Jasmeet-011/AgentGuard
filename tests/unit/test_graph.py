@@ -12,6 +12,7 @@ from agentguard.models import (
     Chunk,
     CitedSentence,
     GeneratorOutput,
+    PolicyDecision,
     RetrievedChunk,
     Trace,
     VerificationResult,
@@ -19,8 +20,12 @@ from agentguard.models import (
 
 
 def settings(**overrides: object) -> Settings:
-    """Verifier and decomposition off unless a test turns them on: most tests here are about the baseline graph."""
-    flags = {"enable_verifier": False, "enable_decomposition": False} | overrides
+    """Verifier, decomposition and policy guard off unless a test turns them on: most tests here are about the baseline graph."""
+    flags = {
+        "enable_verifier": False,
+        "enable_decomposition": False,
+        "enable_policy_guard": False,
+    } | overrides
     return Settings(anthropic_api_key="sk-test", **flags)  # type: ignore[arg-type]
 
 
@@ -85,6 +90,21 @@ class FakeVerifier:
         return self.outcome
 
 
+class FakePolicyGuard:
+    """Returns a canned category and a message naming it."""
+
+    def __init__(self, category: str = "allowed") -> None:
+        self.category = category
+        self.calls: list[str] = []
+
+    def check(self, question: str, trace: Trace) -> PolicyDecision:
+        self.calls.append(question)
+        return PolicyDecision(category=self.category, reason="canned")  # type: ignore[arg-type]
+
+    def refusal_message(self, decision: PolicyDecision) -> str:
+        return f"blocked: {decision.category}"
+
+
 class FakeDecomposer:
     """Returns canned sub-queries and records the questions it was asked to split."""
 
@@ -108,6 +128,7 @@ def test_enabling_an_unimplemented_node_raises_naming_its_milestone(flag: str) -
             FakeGenerator(output),
             FakeVerifier(),
             FakeDecomposer(),
+            FakePolicyGuard(),
         )  # type: ignore[arg-type]
     assert flag in str(exc_info.value)
     assert UNIMPLEMENTED_NODES[flag] in str(exc_info.value)
@@ -122,6 +143,7 @@ def test_default_settings_build_without_raising() -> None:
         FakeGenerator(output),
         FakeVerifier(),
         FakeDecomposer(),
+        FakePolicyGuard(),
     )  # type: ignore[arg-type]
     assert graph is not None
 
@@ -131,6 +153,7 @@ def _invoke(
     generator: FakeGenerator,
     verifier: FakeVerifier | None = None,
     decomposer: FakeDecomposer | None = None,
+    guard: FakePolicyGuard | None = None,
     **flags: object,
 ) -> Answer:
     graph = build_graph(
@@ -139,12 +162,15 @@ def _invoke(
         generator,  # type: ignore[arg-type]
         verifier or FakeVerifier(),  # type: ignore[arg-type]
         decomposer or FakeDecomposer(),  # type: ignore[arg-type]
+        guard or FakePolicyGuard(),  # type: ignore[arg-type]
     )
     trace = Trace(query_id=uuid.uuid4().hex)
     result = graph.invoke(
         {
             "question": "What fees does Acme charge?",
             "trace": trace,
+            "policy_decision": None,
+            "policy_message": None,
             "sub_queries": [],
             "retrieved": [],
             "generator_output": None,
@@ -306,6 +332,7 @@ def test_topology_gains_a_verify_node_only_when_enabled() -> None:
         FakeGenerator(GeneratorOutput(refused=False)),
         FakeVerifier(),
         FakeDecomposer(),
+        FakePolicyGuard(),
     )
     off = build_graph(settings(enable_verifier=False), *args)  # type: ignore[arg-type]
     on = build_graph(settings(enable_verifier=True), *args)  # type: ignore[arg-type]
@@ -338,8 +365,72 @@ def test_topology_gains_a_decompose_node_only_when_enabled() -> None:
         FakeGenerator(GeneratorOutput(refused=False)),
         FakeVerifier(),
         FakeDecomposer(),
+        FakePolicyGuard(),
     )
     off = build_graph(settings(enable_decomposition=False), *args)  # type: ignore[arg-type]
     on = build_graph(settings(enable_decomposition=True), *args)  # type: ignore[arg-type]
     assert "decompose" not in off.get_graph().nodes
     assert "decompose" in on.get_graph().nodes
+
+
+def test_policy_guard_off_never_calls_the_guard() -> None:
+    guard = FakePolicyGuard("personalized_advice")
+    generator = FakeGenerator(GeneratorOutput(refused=True))
+    _invoke(FakeRetriever([]), generator, guard=guard)
+    assert guard.calls == []
+    assert generator.calls  # the pipeline ran even though the fake guard would have blocked
+
+
+@pytest.mark.parametrize("category", ["personalized_advice", "pii_request", "out_of_scope"])
+def test_blocked_question_skips_everything_and_refuses_with_reason_policy(category: str) -> None:
+    retriever = FakeRetriever([RetrievedChunk(chunk=make_chunk())])
+    generator = FakeGenerator(GeneratorOutput(refused=False))
+    decomposer = FakeDecomposer()
+    verifier = FakeVerifier()
+    answer = _invoke(
+        retriever,
+        generator,
+        verifier,
+        decomposer,
+        FakePolicyGuard(category),
+        enable_policy_guard=True,
+        enable_decomposition=True,
+        enable_verifier=True,
+    )
+    assert (retriever.calls, generator.calls, decomposer.calls, verifier.calls) == ([], [], [], [])
+    assert answer.refused and answer.refusal_reason == "policy"
+    assert answer.refusal_message == f"blocked: {category}"
+    assert answer.sentences == [] and answer.retrieved == []
+
+
+def test_allowed_question_runs_the_rest_of_the_pipeline() -> None:
+    sentence = CitedSentence(text="Acme charges 1.25%.", citations=["acme-p7-0"])
+    guard = FakePolicyGuard("allowed")
+    retriever = FakeRetriever([RetrievedChunk(chunk=make_chunk())])
+    generator = FakeGenerator(GeneratorOutput(refused=False, sentences=[sentence]))
+    decomposer = FakeDecomposer(["a", "b"])
+    answer = _invoke(
+        retriever,
+        generator,
+        decomposer=decomposer,
+        guard=guard,
+        enable_policy_guard=True,
+        enable_decomposition=True,
+    )
+    assert guard.calls == ["What fees does Acme charge?"]
+    assert decomposer.calls and retriever.calls and generator.calls
+    assert not answer.refused and answer.sentences == [sentence]
+
+
+def test_policy_guard_node_exists_only_when_enabled() -> None:
+    args = (
+        FakeRetriever([]),
+        FakeGenerator(GeneratorOutput(refused=False)),
+        FakeVerifier(),
+        FakeDecomposer(),
+        FakePolicyGuard(),
+    )
+    off = build_graph(settings(enable_policy_guard=False), *args)  # type: ignore[arg-type]
+    on = build_graph(settings(enable_policy_guard=True), *args)  # type: ignore[arg-type]
+    assert "policy_guard" not in off.get_graph().nodes
+    assert "policy_guard" in on.get_graph().nodes

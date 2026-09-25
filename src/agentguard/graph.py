@@ -1,4 +1,4 @@
-"""The LangGraph pipeline: [decompose] -> retrieve -> generate -> [verify] -> finalize, from config flags.
+"""The LangGraph pipeline: [policy_guard] -> [decompose] -> retrieve -> generate -> [verify] -> finalize, from config flags.
 
 `build_graph` is deliberately dumb: it wires nodes around a `Retriever` and `Generator`
 it is handed. `pipeline.Pipeline` is what actually builds those (from shared, load-once
@@ -12,12 +12,14 @@ from langgraph.graph.state import CompiledStateGraph
 
 from agentguard.agents.decomposer import Decomposer
 from agentguard.agents.generator import Generator
+from agentguard.agents.policy import PolicyGuard
 from agentguard.agents.verifier import Verifier
 from agentguard.config import Settings
 from agentguard.models import (
     Answer,
     CitedSentence,
     GeneratorOutput,
+    PolicyDecision,
     RetrievedChunk,
     Trace,
     VerificationResult,
@@ -26,7 +28,6 @@ from agentguard.retrieval.retriever import Retriever
 
 # Which milestone adds the node behind each not-yet-implemented flag.
 UNIMPLEMENTED_NODES: dict[str, str] = {
-    "enable_policy_guard": "M8 (policy_guard node)",
     "enable_score_threshold": "M9 (threshold_check node)",
 }
 
@@ -36,6 +37,8 @@ class PipelineState(TypedDict):
 
     question: str
     trace: Trace
+    policy_decision: PolicyDecision | None
+    policy_message: str | None
     sub_queries: list[str]
     retrieved: list[RetrievedChunk]
     generator_output: GeneratorOutput | None
@@ -54,9 +57,10 @@ def _check_implemented(settings: Settings) -> None:
             )
 
 
-# The generator's own refusal_kind, mapped to Answer's refusal_reason. There is no policy_guard
-# node yet (M8), so an advice-request refusal from the generator's prompt-level guard (rule 7)
-# is still reported as "policy"; anything else refused falls back to "insufficient_evidence".
+# The generator's own refusal_kind, mapped to Answer's refusal_reason. An advice-request refusal
+# from the generator's prompt-level guard (rule 7) is reported as "policy" too, in case the
+# policy_guard node is off or missed it; anything else refused falls back to
+# "insufficient_evidence".
 _REFUSAL_REASON: dict[str | None, Literal["policy", "insufficient_evidence"]] = {
     "advice_request": "policy",
     "insufficient_evidence": "insufficient_evidence",
@@ -86,22 +90,44 @@ def _build_answer(state: PipelineState, output: GeneratorOutput) -> Answer:
     )
 
 
+def _blocked_answer(state: PipelineState, message: str) -> Answer:
+    """A refusal for a question the policy guard blocked: nothing was retrieved or generated."""
+    return Answer(
+        question=state["question"],
+        sentences=[],
+        refused=True,
+        refusal_reason="policy",
+        refusal_message=message,
+        retrieved=[],
+        verification=[],
+        removed_sentences=[],
+    )
+
+
 def build_graph(
     settings: Settings,
     retriever: Retriever,
     generator: Generator,
     verifier: Verifier,
     decomposer: Decomposer,
+    guard: PolicyGuard,
 ) -> CompiledStateGraph:
-    """Compile [decompose] -> retrieve -> generate -> [verify] -> finalize.
+    """Compile [policy_guard] -> [decompose] -> retrieve -> generate -> [verify] -> finalize.
 
-    `decompose` (before retrieval) and `verify` exist only if their flags are on.
+    `policy_guard` (the entry node), `decompose` and `verify` exist only if their flags are on.
+    A blocked question goes from `policy_guard` straight to `finalize`: no retrieval, no
+    generation.
 
     A generator refusal (or an empty answer) skips `verify`: there is nothing to check.
-    Raises `NotImplementedError` if a flag for a node not yet built (policy_guard,
-    threshold_check) is enabled, naming the milestone that adds it.
+    Raises `NotImplementedError` if a flag for a node not yet built (threshold_check) is
+    enabled, naming the milestone that adds it.
     """
     _check_implemented(settings)
+
+    def policy_node(state: PipelineState) -> dict[str, object]:
+        decision = guard.check(state["question"], state["trace"])
+        message = None if decision.category == "allowed" else guard.refusal_message(decision)
+        return {"policy_decision": decision, "policy_message": message}
 
     def decompose_node(state: PipelineState) -> dict[str, object]:
         return {"sub_queries": decomposer.decompose(state["question"], state["trace"])}
@@ -135,6 +161,9 @@ def build_graph(
 
     def finalize_node(state: PipelineState) -> dict[str, object]:
         output = state["generator_output"]
+        message = state["policy_message"]
+        if message is not None:
+            return {"answer": _blocked_answer(state, message)}
         assert output is not None  # generate_node always sets it
         return {"answer": _build_answer(state, output)}
 
@@ -147,12 +176,20 @@ def build_graph(
     graph.add_node("retrieve", retrieve_node)
     graph.add_node("generate", generate_node)
     graph.add_node("finalize", finalize_node)
+    first = "retrieve"
     if settings.enable_decomposition:
         graph.add_node("decompose", decompose_node)
-        graph.set_entry_point("decompose")
         graph.add_edge("decompose", "retrieve")
+        first = "decompose"
+    if settings.enable_policy_guard:
+        graph.add_node("policy_guard", policy_node)
+        graph.set_entry_point("policy_guard")
+        graph.add_conditional_edges(
+            "policy_guard",
+            lambda state: "finalize" if state["policy_message"] is not None else first,
+        )
     else:
-        graph.set_entry_point("retrieve")
+        graph.set_entry_point(first)
     graph.add_edge("retrieve", "generate")
     if settings.enable_verifier:
         graph.add_node("verify", verify_node)

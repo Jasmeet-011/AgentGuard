@@ -57,13 +57,32 @@ class Settings(BaseSettings):
     # PLAN.md's baseline. "dense" and "hybrid" are ablation variants (DECISIONS.md M3).
     retrieval_mode: Literal["dense", "hybrid", "hybrid_rerank"] = "hybrid_rerank"
 
-    # Each flag flips to True when its node lands: verify (M7) is on; policy_guard (M8) and
-    # threshold_check (M9) stay off, and `graph.build_graph` raises if one is on with no node.
-    enable_policy_guard: bool = False
+    # Each flag flips to True when its node lands and its eval is recorded: verify (M7) and
+    # policy_guard (M8) are on; threshold_check (M9) stays off, and `graph.build_graph` raises
+    # if it is on with no node.
+    enable_policy_guard: bool = True
     enable_verifier: bool = True
     enable_score_threshold: bool = False
     # Query decomposition (M7): on since its dev eval landed (fixes q018; DECISIONS.md).
     enable_decomposition: bool = True
+
+    # Refusal text per blocked policy category (templates, never LLM-generated). "allowed" has none.
+    policy_refusal_messages: dict[str, str] = {
+        "personalized_advice": (
+            "Blocked by the policy guard (personalized_advice): AgentGuard reports what "
+            "Form ADV brochures disclose and does not recommend what a specific client "
+            "should buy, sell, or move."
+        ),
+        "pii_request": (
+            "Blocked by the policy guard (pii_request): AgentGuard does not provide personal "
+            "information about individuals, such as home addresses, personal phone numbers, "
+            "family, or personal life."
+        ),
+        "out_of_scope": (
+            "Blocked by the policy guard (out_of_scope): AgentGuard only answers questions "
+            "about investment advisory firms and their Form ADV brochures."
+        ),
+    }
 
     min_rerank_score: float = 0.0
     verifier_max_drop_ratio: float = Field(default=0.5, ge=0.0, le=1.0)

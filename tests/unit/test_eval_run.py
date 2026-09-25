@@ -210,3 +210,14 @@ def test_every_variant_sets_the_optional_components_explicitly() -> None:
         assert flags <= overrides.keys(), name
     assert VARIANTS["baseline"]["enable_decomposition"] is False
     assert VARIANTS["+decompose"]["enable_decomposition"] is True
+
+
+def test_plus_policy_is_everything_except_the_threshold() -> None:
+    overrides = VARIANTS["+policy"]
+    assert overrides["enable_verifier"] is True
+    assert overrides["enable_decomposition"] is True
+    assert overrides["enable_policy_guard"] is True
+    assert overrides["enable_score_threshold"] is False
+    # Same as +verifier+decompose except for the guard, so the delta is the guard alone.
+    other = VARIANTS["+verifier+decompose"]
+    assert {k for k in overrides if overrides[k] != other[k]} == {"enable_policy_guard"}

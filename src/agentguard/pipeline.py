@@ -14,6 +14,7 @@ from qdrant_client import QdrantClient
 
 from agentguard.agents.decomposer import Decomposer
 from agentguard.agents.generator import Generator
+from agentguard.agents.policy import PolicyGuard
 from agentguard.agents.verifier import Verifier
 from agentguard.config import Settings
 from agentguard.graph import PipelineState, build_graph
@@ -92,7 +93,8 @@ class Pipeline:
         generator = Generator(settings, resources.llm)
         verifier = Verifier(settings, resources.llm)
         decomposer = Decomposer(settings, resources.llm)
-        self._graph = build_graph(settings, retriever, generator, verifier, decomposer)
+        guard = PolicyGuard(settings, resources.llm)
+        self._graph = build_graph(settings, retriever, generator, verifier, decomposer, guard)
 
     @property
     def resources(self) -> Resources:
@@ -110,6 +112,8 @@ class Pipeline:
         initial: PipelineState = {
             "question": question,
             "trace": trace,
+            "policy_decision": None,
+            "policy_message": None,
             "sub_queries": [],
             "retrieved": [],
             "generator_output": None,
