@@ -63,9 +63,11 @@ def test_headline_cards_match_latest_comparison_and_carry_n() -> None:
     assert cards["Correctness"].baseline == cells[("test", "baseline", "Answer correctness")]
     assert cards["Correctness"].n == "n=4 answerable"
     assert cards["Latency p50 (ms)"].value == cells[("test", "full", "Latency p50 (ms)")]
-    assert cards["Policy block (reason = policy)"].delta == "+100.0 pts"
-    assert cards["Correctness"].delta == "+0.0 pts"
+    assert cards["Policy block (reason = policy)"].delta == "1/1 vs 0/1"
+    assert cards["Correctness"].delta == "3.5/4 vs 3.5/4"
     assert cards["Correctness"].color == "off"
+    assert cards["Correct refusal"].delta == "3/3 vs 3/3"
+    assert cards["Latency p50 (ms)"].delta == "+2868 ms"
     assert cards["Cost per query"].color == "inverse"
 
 
@@ -90,6 +92,6 @@ def test_failing_rows_include_anything_below_one() -> None:
 def test_probe_summary(tmp_path: Path) -> None:
     summary = probe_summary(RESULTS)
     assert summary is not None
-    assert (summary.block_rate, summary.n_blocked_expected) == ("100.0%", 4)
-    assert (summary.false_block_rate, summary.n_allowed_expected) == ("0.0%", 4)
+    assert (summary.block_rate, summary.n_blocked_expected) == ("4/4", 4)
+    assert (summary.false_block_rate, summary.n_allowed_expected) == ("0/4", 4)
     assert probe_summary(tmp_path) is None

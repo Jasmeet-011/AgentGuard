@@ -49,7 +49,7 @@ class Card(BaseModel):
 class ProbeSummary(BaseModel):
     """Block and false-block rate on the policy probes, with their denominators."""
 
-    block_rate: str
+    block_rate: str  # a count ("4/4") when n is small, else a percentage
     n_blocked_expected: int
     false_block_rate: str
     n_allowed_expected: int
@@ -61,27 +61,53 @@ def load_runs(results_dir: Path) -> dict[tuple[str, str], RunResult]:
     return latest_runs(results_dir)
 
 
+# Below this many questions, a percentage or a percentage-point delta overstates precision.
+SMALL_N = 5
+
+
+def sample_n(run: RunResult, field: str) -> int:
+    """The number of questions behind an Aggregate field."""
+    a = run.aggregate
+    return {
+        "retrieval_recall": a.n_answerable,
+        "correctness": a.n_answerable,
+        "faithfulness": sum(r.faithfulness is not None for r in run.rows),
+        "correct_refusal_rate": a.n_unanswerable,
+        "false_refusal_rate": a.n_answerable,
+        "policy_reason_rate": a.n_policy,
+    }.get(field, len(run.rows))
+
+
 def sample_size(run: RunResult, field: str) -> str:
     """The n behind an Aggregate field, e.g. "n=4 answerable"."""
-    a = run.aggregate
-    faithful = sum(r.faithfulness is not None for r in run.rows)
-    counts = {
-        "retrieval_recall": f"n={a.n_answerable} answerable",
-        "correctness": f"n={a.n_answerable} answerable",
-        "faithfulness": f"n={faithful} answerable, not refused",
-        "correct_refusal_rate": f"n={a.n_unanswerable} unanswerable",
-        "false_refusal_rate": f"n={a.n_answerable} answerable",
-        "policy_reason_rate": f"n={a.n_policy} policy",
-    }
-    return counts.get(field, f"n={len(run.rows)} questions")
+    what = {
+        "retrieval_recall": "answerable",
+        "correctness": "answerable",
+        "faithfulness": "answerable, not refused",
+        "correct_refusal_rate": "unanswerable",
+        "false_refusal_rate": "answerable",
+        "policy_reason_rate": "policy",
+    }.get(field, "questions")
+    return f"n={sample_n(run, field)} {what}"
 
 
-def _delta(full: float | None, base: float | None, kind: str, better: str) -> tuple[str, str]:
-    """Delta text and streamlit colour for `full` vs `base`."""
+def count_text(rate: float | None, n: int) -> str:
+    """A rate as a count out of n, e.g. "1/1". Scores that average partial credit can be fractional."""
+    if rate is None:
+        return "n/a"
+    return f"{round(rate * n, 2):g}/{n}"
+
+
+def _delta(
+    full: float | None, base: float | None, kind: str, better: str, n: int
+) -> tuple[str, str]:
+    """Delta text and streamlit colour for `full` vs `base`; counts instead of points if n is small."""
     if full is None or base is None:
         return "n/a", "off"
     diff = full - base
-    if kind == "pct":
+    if kind == "pct" and n < SMALL_N:
+        text = f"{count_text(full, n)} vs {count_text(base, n)}"
+    elif kind == "pct":
         text = f"{diff * 100:+.1f} pts"
     elif kind == "ms":
         text = f"{diff:+.0f} ms"
@@ -100,7 +126,7 @@ def headline_cards(runs: dict[tuple[str, str], RunResult]) -> list[Card]:
     cards = []
     for label, field, kind, better in TABLE_METRICS:
         f, b = getattr(full.aggregate, field), getattr(base.aggregate, field)
-        delta, color = _delta(f, b, kind, better)
+        delta, color = _delta(f, b, kind, better, sample_n(full, field))
         cards.append(
             Card(
                 label=label,
@@ -159,6 +185,10 @@ def chart_rows(variants: list[RunResult]) -> list[dict[str, object]]:
     return rows
 
 
+def _rate_text(rate: float | None, n: int) -> str:
+    return count_text(rate, n) if n < SMALL_N else fmt(rate, "pct")
+
+
 def probe_summary(results_dir: Path) -> ProbeSummary | None:
     """The latest policy-probe run in `results_dir/probes`, or None if there is none."""
     files = sorted((results_dir / "probes").glob("*.json"))
@@ -168,9 +198,9 @@ def probe_summary(results_dir: Path) -> ProbeSummary | None:
     blocked = sum(r.expected == "blocked" for r in run.results)
     allowed = sum(r.expected == "allowed" for r in run.results)
     return ProbeSummary(
-        block_rate=fmt(run.block_rate, "pct"),
+        block_rate=_rate_text(run.block_rate, blocked),
         n_blocked_expected=blocked,
-        false_block_rate=fmt(run.false_block_rate, "pct"),
+        false_block_rate=_rate_text(run.false_block_rate, allowed),
         n_allowed_expected=allowed,
         timestamp=run.timestamp,
     )

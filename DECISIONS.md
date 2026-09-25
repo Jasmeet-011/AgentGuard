@@ -849,3 +849,11 @@ partial answers.)
 - `app/streamlit_app.py` imports `agentguard.pipeline` (torch) only when the first question is
   asked, so the Evals tab does not wait for it. Cold page load in AppTest went from 14 s to 1.5 s
   (warm reruns 0.3 s); the first Ask click now pays the model load.
+
+## M11: Counts instead of deltas for small n
+
+- On the Evals tab, a rate whose n is under 5 (`view.SMALL_N`) shows counts, not percentage-point
+  deltas: a card's delta reads e.g. "1/1 vs 0/1" (full vs baseline), and the policy probe rates read
+  "4/4" and "0/4". Correctness and faithfulness average partial credit per question, so their
+  counts can be fractional ("3.5/4"). Card values, the dev table and `latest_comparison.md` are
+  unchanged; latency and cost (n=8) keep their ms and USD deltas.
