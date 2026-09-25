@@ -867,3 +867,9 @@ partial answers.)
 - The demo's one live, uncached call is the Verifier toggle on question 2, so its cache entry is
   deliberately not warmed. Every other demo step is cached.
 - README states the eval `full` variant includes the verifier while the app default has it off.
+
+## M13 update: the live uncached demo moment
+
+- The live, uncached call in the demo is now a free-text question ("What fees does Facet charge?")
+  on the default toggles, replacing the verifier toggle on question 2 (which supersedes the M13
+  bullet above). The verifier stays off during the demo and is discussed from the eval numbers.
