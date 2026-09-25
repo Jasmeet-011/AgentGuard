@@ -12,6 +12,7 @@ from agentguard.ui import (
     policy_category,
     removed_with_reasons,
     render_answer,
+    strip_header,
     sub_queries,
     trace_rows,
 )
@@ -68,7 +69,7 @@ def show_sentences(answer: Answer) -> None:
         note = " *(partially supported)*" if s.partial else ""
         st.markdown(f"{s.text} **{marker(s.numbers)}**{note}")
     if answer.partial_note:
-        st.warning(f"Not covered by the documents: {answer.partial_note}")
+        st.warning(f"Not found in the retrieved passages: {answer.partial_note}")
     st.caption("Citations")
     for c in rendered.citations:
         chunk = c.chunk
@@ -77,7 +78,7 @@ def show_sentences(answer: Answer) -> None:
             f"**Firm:** {chunk.firm_name}  \n**Item:** {item}  \n"
             f"**doc_type:** {chunk.doc_type}  \n**{c.pages.capitalize()}**  \n`{chunk.chunk_id}`"
         )
-        show_citation(c.number, c.label, chunk.text, details)
+        show_citation(c.number, c.label, strip_header(chunk), details)
 
 
 def show_answer(answer: Answer, trace: Trace) -> None:

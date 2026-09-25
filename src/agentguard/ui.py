@@ -43,6 +43,14 @@ class TraceRow(BaseModel):
     cached: bool
 
 
+def strip_header(chunk: Chunk) -> str:
+    """Chunk text without its retrieval header line ("{firm} | Item N: title"), for display only."""
+    first, sep, rest = chunk.text.partition("\n")
+    if sep and first.startswith(f"{chunk.firm_name} | "):
+        return rest
+    return chunk.text
+
+
 def demo_label(index: int) -> str:
     """Dropdown label for demo question `index`: the question plus its tag, if any."""
     question = DEMO_QUESTIONS[index]

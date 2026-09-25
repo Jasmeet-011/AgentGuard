@@ -811,3 +811,12 @@ partial answers.)
   inspects torch's lazily imported modules); the second hides the Deploy button for the demo.
 - torchvision is not added: nothing in the project uses it.
 - Consequence: Streamlit no longer reloads on source edits, so restart `make app` after changing code.
+
+## M10: UI label and citation text fixes
+
+- The UI's partial-answer label is "Not found in the retrieved passages:" (was "Not covered by the
+  documents:"). `partial_note` describes what retrieval returned, not what the filings contain, so
+  the old wording overclaimed absence. The CLI (`agentguard ask`) still uses the old wording.
+- Citation expanders show the chunk text without its retrieval header line ("{firm} | Item N:
+  title"), which the metadata above already shows. Display only (`ui.strip_header`); stored
+  chunks and what the generator sees are unchanged.

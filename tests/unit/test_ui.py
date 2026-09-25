@@ -15,6 +15,7 @@ from agentguard.ui import (
     policy_category,
     removed_with_reasons,
     render_answer,
+    strip_header,
     sub_queries,
     trace_rows,
 )
@@ -117,3 +118,12 @@ def test_trace_rows_show_original_values_for_cached_events() -> None:
     assert (rows[0].ms, rows[0].input_tokens, rows[0].cost_usd) == (900.0, 10, 0.01)
     assert rows[0].cached is True
     assert rows[1].cached is False
+
+
+def test_strip_header_removes_only_the_retrieval_header_line() -> None:
+    c = chunk("a").chunk
+    with_header = c.model_copy(update={"text": "Savvy | Item 5: Fees\nbody | pipe\nmore"})
+    assert strip_header(with_header) == "body | pipe\nmore"
+    assert with_header.text.startswith("Savvy | Item 5")  # stored chunk untouched
+    other = c.model_copy(update={"text": "No header here\nbody"})
+    assert strip_header(other) == "No header here\nbody"
