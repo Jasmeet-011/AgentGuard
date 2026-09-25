@@ -64,9 +64,9 @@ def test_headline_cards_match_latest_comparison_and_carry_n() -> None:
     assert cards["Correctness"].n == "n=4 answerable"
     assert cards["Latency p50 (ms)"].value == cells[("test", "full", "Latency p50 (ms)")]
     assert cards["Policy block (reason = policy)"].delta == "1/1 vs 0/1"
-    assert cards["Correctness"].delta == "3.5/4 vs 3.5/4"
+    assert cards["Correctness"].delta == "same as baseline"
     assert cards["Correctness"].color == "off"
-    assert cards["Correct refusal"].delta == "3/3 vs 3/3"
+    assert cards["Correct refusal"].delta == "same as baseline"
     assert cards["Latency p50 (ms)"].delta == "+2868 ms"
     assert cards["Cost per query"].color == "inverse"
 

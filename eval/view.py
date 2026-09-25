@@ -99,6 +99,9 @@ def count_text(rate: float | None, n: int) -> str:
     return f"{round(rate * n, 2):g}/{n}"
 
 
+SAME_AS_BASELINE = "same as baseline"
+
+
 def _delta(
     full: float | None, base: float | None, kind: str, better: str, n: int
 ) -> tuple[str, str]:
@@ -106,6 +109,8 @@ def _delta(
     if full is None or base is None:
         return "n/a", "off"
     diff = full - base
+    if round(diff, 6) == 0:
+        return SAME_AS_BASELINE, "off"
     if kind == "pct" and n < SMALL_N:
         text = f"{count_text(full, n)} vs {count_text(base, n)}"
     elif kind == "pct":
@@ -114,8 +119,6 @@ def _delta(
         text = f"{diff:+.0f} ms"
     else:
         text = f"{diff:+.4f} USD"
-    if round(diff, 6) == 0:
-        return text, "off"
     return text, "normal" if better == "high" else "inverse"
 
 

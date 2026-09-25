@@ -14,6 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from eval.records import RunResult
 from eval.view import (
     DEV_ORDER,
+    SAME_AS_BASELINE,
     Card,
     chart_rows,
     dev_table,
@@ -50,6 +51,10 @@ def _signature() -> tuple[float, int]:
 
 def _card(col: st.delta_generator.DeltaGenerator, card: Card) -> None:
     with col:
+        if card.delta == SAME_AS_BASELINE:
+            st.metric(f"{card.label} ({card.n})", card.value)
+            st.caption(f"{SAME_AS_BASELINE} ({card.baseline})")
+            return
         st.metric(f"{card.label} ({card.n})", card.value, card.delta, delta_color=card.color)
         st.caption(f"baseline {card.baseline}")
 
@@ -88,18 +93,18 @@ def show_chart(runs: dict[tuple[str, str], RunResult]) -> None:
         return
     order = [r["variant"] for r in rows if r["measure"].startswith("Correct")]
     base = alt.Chart(alt.Data(values=rows)).encode(
-        x=alt.X("variant:N", sort=order, title=None, axis=alt.Axis(labelAngle=-30)),
-        y=alt.Y("value:Q", title=None),
+        y=alt.Y("variant:N", sort=order, title=None, axis=alt.Axis(labelLimit=0)),
+        x=alt.X("value:Q", title=None),
     )
     panels = []
     for measure in ("Correctness (%)", "Cost per query (USD)"):
         bars = base.transform_filter(alt.datum.measure == measure).mark_bar()
         text = (
             base.transform_filter(alt.datum.measure == measure)
-            .mark_text(dy=-6)
+            .mark_text(align="left", dx=4)
             .encode(text="label:N")
         )
-        panels.append((bars + text).properties(title=measure, width=320, height=240))
+        panels.append((bars + text).properties(title=measure, width=300, height=240))
     st.subheader("Correctness and cost per query (dev)")
     st.altair_chart(alt.hconcat(*panels), width="content")
     st.caption(DEV_CAPTION)
