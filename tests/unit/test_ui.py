@@ -11,8 +11,6 @@ from agentguard.models import (
 )
 from agentguard.ui import (
     DEMO_QUESTIONS,
-    Toggles,
-    decision_strip,
     demo_label,
     policy_category,
     removed_with_reasons,
@@ -134,57 +132,3 @@ def test_strip_header_removes_only_the_retrieval_header_line() -> None:
 def test_demo_groups_follow_use_case() -> None:
     groups = [demo_label(i).split(" · ")[0] for i in range(7)]
     assert groups == ["Due diligence"] * 4 + ["Honest refusal"] + ["Guardrails"] * 2
-
-
-ON = Toggles(mode="hybrid_rerank", verifier=True, decomposition=True, guard=True)
-
-
-def steps(a: Answer, t: Trace, toggles: Toggles = ON) -> dict[str, tuple[str, list[str]]]:
-    return {s.name: (s.text, s.items) for s in decision_strip(a, t, toggles)}
-
-
-def test_strip_allowed_decomposed_and_verified() -> None:
-    a = answer(
-        verification=[
-            VerificationResult(sentence_index=1, verdict="supported", reason="ok"),
-            VerificationResult(sentence_index=2, verdict="supported", reason="ok"),
-            VerificationResult(sentence_index=3, verdict="unsupported", reason="no"),
-        ]
-    )
-    t = Trace(
-        query_id="x",
-        events=[
-            event("policy_guard", category="allowed"),
-            event("decompose", sub_queries=["fee?", "sec?"]),
-            event("retrieve", returned=6),
-            event("verify", sentences_checked=3, sentences_removed=1, sentences_partial=0),
-        ],
-    )
-    got = steps(a, t)
-    assert got["Policy guard"][0] == "allowed"
-    assert got["Decomposition"] == ("2 sub-queries", ["fee?", "sec?"])
-    assert got["Retrieval"][0] == "hybrid_rerank, 6 passages retrieved"
-    assert got["Verifier"][0] == "2/3 sentences supported, 1 removed"
-
-
-def test_strip_single_sub_query_is_unchanged() -> None:
-    t = Trace(query_id="x", events=[event("decompose", sub_queries=["q"])])
-    assert steps(answer(), t)["Decomposition"][0] == "1 sub-query (unchanged)"
-
-
-def test_strip_blocked_skips_later_steps_and_off_toggles_say_off() -> None:
-    t = Trace(query_id="x", events=[event("policy_guard", category="pii_request")])
-    got = steps(answer(refused=True), t)
-    assert got["Policy guard"][0] == "blocked: pii_request"
-    assert got["Decomposition"][0] == "not run (blocked)"
-    assert got["Retrieval"][0] == "hybrid_rerank: not run (blocked)"
-    assert got["Verifier"][0] == "not run (blocked)"
-    off = Toggles(mode="dense", verifier=False, decomposition=False, guard=False)
-    got = steps(answer(), Trace(query_id="x", events=[event("retrieve", returned=6)]), off)
-    assert [got[k][0] for k in ("Policy guard", "Decomposition", "Verifier")] == ["off"] * 3
-    assert got["Retrieval"][0] == "dense, 6 passages retrieved"
-
-
-def test_strip_verifier_on_but_generator_refused() -> None:
-    t = Trace(query_id="x", events=[event("policy_guard", category="allowed")])
-    assert steps(answer(refused=True), t)["Verifier"][0] == "not run (no answer to check)"

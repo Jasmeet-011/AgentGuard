@@ -11,13 +11,12 @@ from agentguard.models import Answer, Trace
 from agentguard.ui import (
     DEMO_QUESTIONS,
     RETRIEVAL_MODES,
-    Toggles,
-    decision_strip,
     demo_label,
     policy_category,
     removed_with_reasons,
     render_answer,
     strip_header,
+    sub_queries,
     trace_rows,
 )
 
@@ -66,13 +65,11 @@ def marker(numbers: list[int]) -> str:
     return "˒".join(str(n).translate(SUPERSCRIPT) for n in numbers)
 
 
-def show_strip(answer: Answer, trace: Trace, toggles: Toggles) -> None:
-    """One line per pipeline step; steps switched off in the sidebar say so."""
-    lines = []
-    for step in decision_strip(answer, trace, toggles):
-        lines.append(f"- **{step.name}:** {step.text}")
-        lines += [f"    - {item}" for item in step.items]
-    st.info("**Pipeline decisions**\n" + "\n".join(lines))
+def show_sub_queries(trace: Trace) -> None:
+    subs = sub_queries(trace)
+    if subs:
+        lines = "\n".join(f"{i}. {q}" for i, q in enumerate(subs, 1))
+        st.info(f"**Decomposed into sub-queries:**\n\n{lines}")
 
 
 def show_citation(number: int, label: str, chunk_text: str, details: str) -> None:
@@ -106,8 +103,8 @@ def show_sentences(answer: Answer) -> None:
         show_citation(c.number, c.label, strip_header(chunk), details)
 
 
-def show_answer(answer: Answer, trace: Trace, toggles: Toggles) -> None:
-    show_strip(answer, trace, toggles)
+def show_answer(answer: Answer, trace: Trace) -> None:
+    show_sub_queries(trace)
     if answer.refused:
         show_refusal(answer, trace)
     else:
@@ -191,11 +188,7 @@ def ask_tab(toggles: tuple[str, bool, bool, bool]) -> None:
     load_base()
     with st.spinner("Running pipeline..."):
         answer, trace = pipeline_for(*toggles).run(question)
-    show_answer(
-        answer,
-        trace,
-        Toggles(mode=toggles[0], verifier=toggles[1], decomposition=toggles[2], guard=toggles[3]),
-    )
+    show_answer(answer, trace)
     show_trace(trace)
 
 
