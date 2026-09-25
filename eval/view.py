@@ -54,6 +54,7 @@ class ProbeSummary(BaseModel):
     false_block_rate: str
     n_allowed_expected: int
     timestamp: str
+    file: str  # path under results_dir
 
 
 def load_runs(results_dir: Path) -> dict[tuple[str, str], RunResult]:
@@ -203,6 +204,57 @@ def probe_summary(results_dir: Path) -> ProbeSummary | None:
         false_block_rate=_rate_text(run.false_block_rate, allowed),
         n_allowed_expected=allowed,
         timestamp=run.timestamp,
+        file=f"probes/{files[-1].name}",
+    )
+
+
+def _stamp(ts: str) -> str:
+    """20260924T233854 -> "2026-09-24 23:38:54"; anything unexpected is returned as is."""
+    if len(ts) != 15 or ts[8] != "T":
+        return ts
+    return f"{ts[:4]}-{ts[4:6]}-{ts[6:8]} {ts[9:11]}:{ts[11:13]}:{ts[13:]}"
+
+
+def run_file(run: RunResult) -> str:
+    """The results file a run was written to (see `agentguard eval`)."""
+    return f"{run.timestamp}_{run.variant}_{run.split}.json"
+
+
+def run_command(run: RunResult) -> str:
+    return f"agentguard eval --variant {run.variant} --split {run.split}"
+
+
+def source_caption(runs: list[RunResult]) -> str:
+    """Where the numbers came from: result file(s), run timestamp(s) and the command."""
+    if not runs:
+        return ""
+    if len(runs) == 1:
+        run = runs[0]
+        return (
+            f"From eval/results/{run_file(run)}, run {_stamp(run.timestamp)} "
+            f"via `{run_command(run)}`"
+        )
+    split = runs[0].split
+    stamps = sorted(r.timestamp for r in runs)
+    when = (
+        f"runs {_stamp(stamps[0])} to {_stamp(stamps[-1])}"
+        if stamps[0] != stamps[-1]
+        else f"run {_stamp(stamps[0])}"
+    )
+    files = (
+        ", ".join(run_file(r) for r in runs)
+        if len(runs) <= 2
+        else (f"{len(runs)} files (latest per variant)")
+    )
+    return (
+        f"From eval/results/, {files}; {when} via "
+        f"`agentguard eval --variant <variant> --split {split}`"
+    )
+
+
+def probe_source_caption(summary: ProbeSummary) -> str:
+    return (
+        f"From eval/results/{summary.file}, run {_stamp(summary.timestamp)} via `agentguard probes`"
     )
 
 

@@ -20,7 +20,9 @@ from eval.view import (
     failing_rows,
     headline_cards,
     load_runs,
+    probe_source_caption,
     probe_summary,
+    source_caption,
 )
 
 HEADLINE_CAPTION = (
@@ -57,12 +59,14 @@ def show_headline(runs: dict[tuple[str, str], RunResult]) -> None:
     if not cards:
         st.info("No test-split runs for both baseline and full in eval/results.")
         return
+    base_run, full_run = runs[("test", "baseline")], runs[("test", "full")]
     st.caption("Each card shows the `full` value; the delta is against `baseline`.")
     for start in range(0, len(cards), 4):
         cols = st.columns(4)
         for col, card in zip(cols, cards[start : start + 4], strict=False):
             _card(col, card)
     st.caption(HEADLINE_CAPTION)
+    st.caption(source_caption([base_run, full_run]))
 
 
 def show_dev_table(runs: dict[tuple[str, str], RunResult]) -> None:
@@ -73,10 +77,12 @@ def show_dev_table(runs: dict[tuple[str, str], RunResult]) -> None:
         return
     st.dataframe(dev_table(variants), hide_index=True, width="stretch")
     st.caption(DEV_CAPTION)
+    st.caption(source_caption(variants))
 
 
 def show_chart(runs: dict[tuple[str, str], RunResult]) -> None:
-    rows = chart_rows(dev_variants(runs))
+    variants = dev_variants(runs)
+    rows = chart_rows(variants)
     if not rows:
         return
     order = [r["variant"] for r in rows if r["measure"].startswith("Correct")]
@@ -96,6 +102,7 @@ def show_chart(runs: dict[tuple[str, str], RunResult]) -> None:
     st.subheader("Correctness and cost per query (dev)")
     st.altair_chart(alt.hconcat(*panels), width="content")
     st.caption(DEV_CAPTION)
+    st.caption(source_caption(variants))
 
 
 def show_probes() -> None:
@@ -113,6 +120,7 @@ def show_probes() -> None:
         summary.false_block_rate,
     )
     st.caption(PROBE_CAPTION)
+    st.caption(probe_source_caption(summary))
 
 
 def show_failures(runs: dict[tuple[str, str], RunResult]) -> None:
@@ -124,7 +132,9 @@ def show_failures(runs: dict[tuple[str, str], RunResult]) -> None:
         st.info(f"No {split} runs.")
         return
     variant = right.selectbox("Variant", sorted(names, key=_variant_rank))
-    rows = failing_rows(runs[(split, variant)])
+    run = runs[(split, variant)]
+    st.caption(source_caption([run]))
+    rows = failing_rows(run)
     if not rows:
         st.success("No answerable question below 1.0 correctness or faithfulness.")
         return
