@@ -151,10 +151,10 @@ def show_failures(runs: dict[tuple[str, str], RunResult]) -> None:
             )
             for fact in row.fact_verdicts:
                 mark = "present" if fact.present else "**MISSING**"
-                st.markdown(f"- {mark}: {fact.key_fact}  \n  *{fact.reason}*")
+                st.markdown(f"- {mark}: {escape_dollars(fact.key_fact)}  \n  *{escape_dollars(fact.reason)}*")
             for s in row.sentence_verdicts:
                 if s.verdict != "supported":
-                    st.markdown(f"- sentence {s.verdict}: {s.sentence}  \n  *{s.reason}*")
+                    st.markdown(f"- sentence {s.verdict}: {escape_dollars(s.sentence)}  \n  *{escape_dollars(s.reason)}*")
 
 
 def _variant_rank(name: str) -> tuple[int, str]:

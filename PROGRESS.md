@@ -852,6 +852,16 @@ fresh-clone run of the README steps, and the backup screen recording (Jasmeet's)
 
 ---
 
+## UI polish merge and dollar fix (after M13)
+
+`ui-polish` (form submit, decision strip, intro panel, grouped demo questions, citation caption,
+Evals source captions) is merged into master. Display-only fix: `escape_dollars()` in
+`src/agentguard/ui.py` escapes "$" so Streamlit does not render "$5 million and $10 million" as
+LaTeX. Applied to every `st.markdown`/`st.info`/`st.warning`/expander label that shows question,
+answer, note, refusal, sub-query, verifier or eval text. The merge had dropped four of the
+escapes (sub-queries, verifier removals, Evals fact and sentence verdicts); restored. Chunk text
+uses `st.text` (no markdown) so it is not escaped. Tagged `v1.1-demo`.
+
 ## Notes for later milestones
 
 - **Default retrieval (decided after M3):** `retrieval_mode = "hybrid_rerank"`

@@ -69,7 +69,7 @@ def marker(numbers: list[int]) -> str:
 def show_sub_queries(trace: Trace) -> None:
     subs = sub_queries(trace)
     if subs:
-        lines = "\n".join(f"{i}. {q}" for i, q in enumerate(subs, 1))
+        lines = "\n".join(f"{i}. {escape_dollars(q)}" for i, q in enumerate(subs, 1))
         st.info(f"**Decomposed into sub-queries:**\n\n{lines}")
 
 
@@ -114,7 +114,7 @@ def show_answer(answer: Answer, trace: Trace) -> None:
     if removed:
         with st.expander(f"Removed by verifier ({len(removed)})"):
             for text, reason in removed:
-                st.markdown(f"- ~~{text}~~  \n  *{reason}*")
+                st.markdown(f"- ~~{escape_dollars(text)}~~  \n  *{escape_dollars(reason)}*")
 
 
 def show_trace(trace: Trace) -> None:
