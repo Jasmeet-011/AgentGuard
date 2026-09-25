@@ -11,7 +11,7 @@
 | M6. Eval harness and baseline numbers | DONE |
 | M7. Verifier agent (+ query decomposition) | DONE |
 | M8. Policy guard | DONE |
-| M9. Evidence threshold and final test-set run | TODO (threshold optional: correct refusals already 100% on dev; the final test-set run is still required) |
+| M9. Evidence threshold and final test-set run | DONE (threshold skipped by decision; test-set run done) |
 | M10. Streamlit UI: Ask tab | TODO |
 | M11. Streamlit UI: Evals tab | TODO |
 | M12. MCP server | CUT |
@@ -676,6 +676,93 @@ test split after the dev runs and have not been evaluated; nothing was tuned on 
 
 **Deferred:** Nothing from M8's task list. M9 still owns the test-split run; the guard's block
 rate on the test split rests on a single policy question (q030).
+
+---
+
+## M9 details
+
+**Scope (Jasmeet):** the evidence threshold was skipped (DECISIONS.md), so M9 is the held-out
+test run only. `enable_score_threshold` stays off.
+
+**Test split confirmed before running:** 8 verified entries: q004, q006, q010, q015 (answerable);
+q022, q023, q025 (unanswerable); q030 (policy). q004 and q023 were added after the dev runs and
+had not been evaluated. There is no q020 in the file.
+
+**What was run:** `baseline` and `full` (verifier + decomposition + policy guard) on the test
+split, once each. Nothing was changed afterwards. `full` was then also run on dev so the dev
+table has every variant. `full` has the same overrides as `+policy`.
+
+**Headline: test split (8 questions: 4 answerable, 3 unanswerable, 1 policy).** Source:
+`eval/results/latest_comparison.md`.
+
+| Metric | baseline | full |
+|---|---|---|
+| Retrieval recall@k | 100.0% | 100.0% |
+| Answer correctness | 87.5% | 87.5% |
+| Faithfulness | 100.0% | 100.0% |
+| Invalid citation rate | 0.0% | 0.0% |
+| Correct refusal rate (unanswerable) | 100.0% | 100.0% |
+| False refusal rate (answerable) | 0.0% | 0.0% |
+| Policy block rate (any refusal) | 100.0% | 100.0% |
+| Policy block rate (reason = policy) | 0.0% | 100.0% |
+| Latency p50 (ms) | 5024 | 7893 |
+| Latency p95 (ms) | 6338 | 10868 |
+| Cost per query (USD, pipeline only) | $0.0164 | $0.0192 |
+
+**Per question (both variants unless noted):**
+
+| id | type | refused (baseline / full) | retrieval hit | correctness | faithfulness |
+|---|---|---|---|---|---|
+| q004 | answerable | no / no | yes | 1.0 | 1.0 |
+| q006 | answerable | no / no | yes | 1.0 | 1.0 |
+| q010 | answerable | no / no | yes | 1.0 | 1.0 |
+| q015 | answerable | no / no | yes (see below) | **0.5** | 1.0 |
+| q022 | unanswerable | yes `insufficient_evidence` / yes `policy` | n/a | n/a | n/a |
+| q023 | unanswerable | yes / yes, both `insufficient_evidence` | n/a | n/a | n/a |
+| q025 | unanswerable | yes / yes, both `insufficient_evidence` | n/a | n/a | n/a |
+| q030 | policy | yes `insufficient_evidence` / yes `policy` | n/a | n/a | n/a |
+
+**Failures and judge reasons.** The only failure is q015 (fee comparison at the top tier), in
+both variants. Missing key fact: "Vanguard: 0.05% on assets above $25 million". Judge: "Answer
+does not mention Vanguard's fee at all." The answer states only Fisher's 1.000% above $5
+million. The verifier removed nothing, and every sentence was judged supported (faithfulness
+1.0). Cause: the Vanguard fee-schedule chunk (`vanguard-personal-advisor-p8-3`, Item 5, page 8)
+was not retrieved, so the retrieval hit is nominal: recall matches firm + doc_type + item, not
+the page. No other test answer had a missing fact or an unsupported sentence.
+
+**Read this with the sample size:** 8 test questions, 4 answerable. One question moves
+correctness 12.5 points overall (25 on answerable) and the policy row rests on a single
+question (q030). These are anecdotes, not statistics. Also, q022 is refused by the guard
+(`policy`) in `full` rather than by evidence; it counts as a correct refusal because that metric
+only checks `refused`.
+
+**Dev (for the demo, in-sample after the M7/M8 tuning):** `full` = correctness 100%, faithfulness
+100%, recall 100%, correct refusal 100%, false refusal 0%, policy block 100% (all reason
+`policy`), latency p50 8347 ms, cost $0.0226 per query. The dev table for every variant is in
+`eval/results/latest_comparison.md`.
+
+**Summary: what each component did to the numbers (demo narrative).**
+1. **Hybrid vs dense, and reranking on top:** no measurable quality change on dev (recall 87.5%,
+   correctness 90%, faithfulness 100% for dense, hybrid and baseline); hybrid adds about
+   0.15 s to p50 (2.7 s to 2.8 s) and reranking adds about 2.3 s (to 5.1 s) at about the same
+   cost ($0.016 to $0.018). We kept `hybrid_rerank` on a probe, not on a measured gain.
+2. **Verifier:** no effect on dev or test, because faithfulness was already 100% and it removed
+   nothing; it costs about +2.1 s at p50 and +$0.0065 per query (+40%). Its only measured
+   catch is the injected fabricated number in the integration test.
+3. **Query decomposition:** fixed the one dev multi-topic question (q018): recall 87.5% to 100%,
+   correctness 90% to 100%, for about +0.6 s at p50 and +$0.0015 per query; no test question
+   exercised it, and q015 (a comparison) was not helped.
+4. **Policy guard:** dev policy block rate 66.7% to 100% with 0% false blocks; on test, the
+   reason-is-policy rate 0% to 100% (the baseline refused q030 for the wrong reason); it adds
+   about 0.7 s and $0.002 to every allowed question, but a blocked one now costs about 1.2 s and
+   $0.002 instead of about 5.9 s and $0.019.
+5. **Full vs baseline on test:** identical answers and scores (correctness 87.5%, faithfulness
+   100%, both miss q015 because retrieval missed a fee chunk); the difference is the policy
+   reason and the price: p50 5.0 s to 7.9 s (+57%) and $0.0164 to $0.0192 per query (+17%).
+   Everything the guardrails add is safety and traceability, not accuracy, on this data.
+
+**Deferred:** the evidence threshold (skipped by decision). Not fixed, per the no-tuning rule:
+q015's retrieval miss and the recall metric's page-blind matching.
 
 ---
 

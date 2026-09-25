@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 # off in the first three; "+verifier", "+decompose" and "+verifier+decompose" add those to the
 # baseline. "+policy" is everything except the M9 threshold (verifier, decomposition and the
 # policy guard), so it compares directly against "+verifier+decompose" (DECISIONS.md).
-# Later milestones add "+threshold" and "full".
+# "full" is everything on: with the M9 threshold skipped (DECISIONS.md) it equals "+policy".
 VARIANTS: dict[str, dict[str, object]] = {
     "dense": {
         "retrieval_mode": "dense",
@@ -63,6 +63,13 @@ VARIANTS: dict[str, dict[str, object]] = {
         "enable_score_threshold": False,
     },
     "+policy": {
+        "retrieval_mode": "hybrid_rerank",
+        "enable_verifier": True,
+        "enable_decomposition": True,
+        "enable_policy_guard": True,
+        "enable_score_threshold": False,
+    },
+    "full": {
         "retrieval_mode": "hybrid_rerank",
         "enable_verifier": True,
         "enable_decomposition": True,

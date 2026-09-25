@@ -221,3 +221,10 @@ def test_plus_policy_is_everything_except_the_threshold() -> None:
     # Same as +verifier+decompose except for the guard, so the delta is the guard alone.
     other = VARIANTS["+verifier+decompose"]
     assert {k for k in overrides if overrides[k] != other[k]} == {"enable_policy_guard"}
+
+
+def test_full_turns_on_every_built_component() -> None:
+    full = VARIANTS["full"]
+    assert full["enable_verifier"] and full["enable_decomposition"] and full["enable_policy_guard"]
+    assert full["enable_score_threshold"] is False  # skipped in M9, so "full" equals "+policy"
+    assert full == VARIANTS["+policy"]

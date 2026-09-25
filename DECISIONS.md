@@ -750,3 +750,47 @@ Texas, unanswerable) to the **test** split after the dev runs. They have not bee
 and nothing was tuned on them. Counts: dev 14 (8 answerable, 3 unanswerable, 3 policy), test 8
 (4 answerable, 3 unanswerable, 1 policy). All 22 are verified. Test-split rates now rest on 8
 questions (still only 1 policy question).
+
+## M9: Evidence threshold skipped (Jasmeet's decision)
+
+PLAN.md's M9 adds a `threshold_check` node (refuse before generation when the top rerank score
+is below `min_rerank_score`). Skipped: correct refusals were already 100% on dev with no
+threshold, so it had nothing to improve, and a threshold tuned on 3 unanswerable dev questions
+would be fitted to noise. `enable_score_threshold` stays False, `min_rerank_score` stays at 0.0
+and unused, and `graph.build_graph` still raises `NotImplementedError` if the flag is turned
+on. M9 is therefore the held-out test run only. (Two caveats, not tuned on: rerank scores from
+different sub-queries are not comparable after decomposition, and a threshold would also cut
+partial answers.)
+
+## M9: The `full` variant and the test run
+
+- `full` = everything that exists is on: verifier, decomposition, policy guard. Because the
+  threshold was skipped, `full` has the same overrides as `+policy` (a unit test pins that).
+  It exists as its own name because it is the PLAN.md headline variant.
+- Test split = q004, q006, q010, q015, q022, q023, q025, q030 (4 answerable, 3 unanswerable,
+  1 policy), all verified. There is no q020 in the file (ids run q001 to q030 with gaps). q004
+  and q023 were added after the dev runs and had never been evaluated before this run.
+- Exactly two variants were run on test, once each: `baseline` and `full`. No prompt, config,
+  threshold or code was changed after seeing the results. (`full` was also run on dev, after
+  the test run, so the dev table has every variant; dev numbers were already known from
+  `+policy`.)
+- Rates over 8 questions: one question is 12.5 points overall, 25 points on 4 answerable,
+  33 on 3 unanswerable, 100 on the single policy question. Read every difference as anecdote.
+
+## M9: What the test run found (not fixed, per the no-tuning rule)
+
+- **q015 (Fisher vs Vanguard at the top tier) fails in both variants (correctness 0.5).** The
+  answer gives only Fisher's 1.000%. The Vanguard fee-schedule chunk that holds the top tier
+  (`vanguard-personal-advisor-p8-3`, Item 5, page 8) is not among the 6 retrieved chunks; the
+  Vanguard chunks retrieved are `p9-3`, `p9-2` and `p10-0`. The recall metric still calls it a
+  hit because it matches firm + doc_type + item and ignores the page (DECISIONS.md, "M6: Metric
+  definitions"), so recall@k overstates retrieval here. This is a retrieval failure on a
+  comparison question, not a generator or verifier failure.
+- **q022 ("What is Savvy's CEO's salary?") is blocked by the guard in `full`, reason `policy`.**
+  It counts as a correct refusal because that metric only checks `refused`, but the reason is
+  `policy` where the baseline says `insufficient_evidence`. The guard read an individual's
+  salary as personal information; that is consistent with the personal-life rule but the
+  question was written as an unanswerable one. The correct-refusal metric does not check the
+  reason, so the difference is invisible in the headline table.
+- **q030 (policy)** is refused by the baseline too, but with reason `insufficient_evidence`
+  (the generator refused), so "reason = policy" is 0% for baseline and 100% for `full`.
