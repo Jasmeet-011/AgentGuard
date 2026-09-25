@@ -62,7 +62,7 @@ def test_demo_questions_are_the_seven_specified() -> None:
     assert len(DEMO_QUESTIONS) == 7
     assert DEMO_QUESTIONS[0] == "What is Savvy's minimum account size?"
     assert "decomposition demo" in demo_label(2)
-    assert demo_label(0) == "1. What is Savvy's minimum account size?"
+    assert demo_label(0) == "Due diligence · 1. What is Savvy's minimum account size?"
 
 
 def test_citations_numbered_by_first_use_and_shared() -> None:
@@ -133,3 +133,8 @@ def test_strip_header_removes_only_the_retrieval_header_line() -> None:
 def test_escape_dollars_keeps_both_dollar_signs_out_of_math_mode():
     assert escape_dollars("$5 million and $10 million") == r"\$5 million and \$10 million"
     assert escape_dollars("no dollars") == "no dollars"
+
+
+def test_demo_groups_follow_use_case() -> None:
+    groups = [demo_label(i).split(" · ")[0] for i in range(7)]
+    assert groups == ["Due diligence"] * 4 + ["Honest refusal"] + ["Guardrails"] * 2

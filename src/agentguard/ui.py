@@ -29,6 +29,17 @@ DEMO_TAGS: dict[int, str] = {
     6: "allowed",
 }
 
+# Use-case group per demo question index, shown as a prefix in the dropdown label.
+DEMO_GROUPS: dict[int, str] = {
+    0: "Due diligence",
+    1: "Due diligence",
+    2: "Due diligence",
+    3: "Due diligence",
+    4: "Honest refusal",
+    5: "Guardrails",
+    6: "Guardrails",
+}
+
 RETRIEVAL_MODES: tuple[str, ...] = ("dense", "hybrid", "hybrid_rerank")
 
 
@@ -57,10 +68,10 @@ def strip_header(chunk: Chunk) -> str:
 
 
 def demo_label(index: int) -> str:
-    """Dropdown label for demo question `index`: the question plus its tag, if any."""
+    """Dropdown label for demo question `index`: use-case group, the question, and its tag."""
     question = DEMO_QUESTIONS[index]
     tag = DEMO_TAGS.get(index)
-    return f"{index + 1}. {question}" + (f" ({tag})" if tag else "")
+    return f"{DEMO_GROUPS[index]} · {index + 1}. {question}" + (f" ({tag})" if tag else "")
 
 
 def trace_rows(trace: Trace) -> list[TraceRow]:
