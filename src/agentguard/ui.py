@@ -1,5 +1,7 @@
 """Pure view-model helpers for the Streamlit app: no Streamlit import, so they are unit-tested."""
 
+import json
+
 from pydantic import BaseModel
 
 from agentguard.models import Answer, Chunk, Trace
@@ -57,6 +59,28 @@ class TraceRow(BaseModel):
 def escape_dollars(text: str) -> str:
     """Escape "$" so st.markdown does not treat text between two dollar signs as LaTeX math."""
     return text.replace("$", r"\$")
+
+
+def display_partial_note(note: str | None) -> str | None:
+    """The partial note to show, or None when it is empty or a junk null.
+
+    The generator sometimes emits "null", "None", or a JSON null/object of nulls such as
+    '{"value": null}' instead of leaving the note unset. Display only; stored answers are unchanged.
+    """
+    if note is None:
+        return None
+    text = note.strip()
+    if not text or text in ("null", "None"):
+        return None
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return note
+    if parsed is None:
+        return None
+    if isinstance(parsed, dict) and all(v is None for v in parsed.values()):
+        return None
+    return note
 
 
 def strip_header(chunk: Chunk) -> str:

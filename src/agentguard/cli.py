@@ -16,6 +16,7 @@ from agentguard.models import Answer, Chunk, RetrievedChunk, Trace
 from agentguard.pipeline import Pipeline, run_pipeline
 from agentguard.retrieval.retriever import RetrievalMode, Retriever
 from agentguard.trace import event_values
+from agentguard.ui import display_partial_note
 
 app = typer.Typer(help="AgentGuard: verified research over Form ADV brochures.")
 console = Console()
@@ -147,10 +148,9 @@ def _print_answer(answer: Answer) -> None:
         tag = " [yellow](partial)[/yellow]" if partial else ""
         console.print(f"{sentence.text} [dim]^{','.join(marks)}[/dim]{tag}")
     _print_removed(answer)
-    if answer.partial_note:
-        console.print(
-            f"\n[yellow]Not found in the retrieved passages:[/yellow] {answer.partial_note}"
-        )
+    partial_note = display_partial_note(answer.partial_note)
+    if partial_note:
+        console.print(f"\n[yellow]Not found in the retrieved passages:[/yellow] {partial_note}")
     if footnote_numbers:
         console.print("\nSources:")
         for chunk_id, n in footnote_numbers.items():

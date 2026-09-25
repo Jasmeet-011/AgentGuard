@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+import pytest
+
 from agentguard.models import (
     Answer,
     Chunk,
@@ -12,6 +14,7 @@ from agentguard.models import (
 from agentguard.ui import (
     DEMO_QUESTIONS,
     demo_label,
+    display_partial_note,
     escape_dollars,
     policy_category,
     removed_with_reasons,
@@ -138,3 +141,19 @@ def test_escape_dollars_keeps_both_dollar_signs_out_of_math_mode():
 def test_demo_groups_follow_use_case() -> None:
     groups = [demo_label(i).split(" · ")[0] for i in range(7)]
     assert groups == ["Due diligence"] * 4 + ["Honest refusal"] + ["Guardrails"] * 2
+
+
+@pytest.mark.parametrize(
+    "note",
+    [None, "", "  \n", "null", "None", " null ", '{"value": null}', '{"a": null, "b": null}', "{}"],
+)
+def test_display_partial_note_hides_junk(note: str | None) -> None:
+    assert display_partial_note(note) is None
+
+
+@pytest.mark.parametrize(
+    "note",
+    ["Custody is not covered.", '{"value": "x"}', '{"value": null, "b": 1}', "nullable terms"],
+)
+def test_display_partial_note_keeps_real_notes(note: str) -> None:
+    assert display_partial_note(note) == note

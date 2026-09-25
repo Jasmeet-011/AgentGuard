@@ -12,6 +12,7 @@ from agentguard.ui import (
     DEMO_QUESTIONS,
     RETRIEVAL_MODES,
     demo_label,
+    display_partial_note,
     escape_dollars,
     policy_category,
     removed_with_reasons,
@@ -91,8 +92,9 @@ def show_sentences(answer: Answer) -> None:
     for s in rendered.sentences:
         note = " *(partially supported)*" if s.partial else ""
         st.markdown(f"{escape_dollars(s.text)} **{marker(s.numbers)}**{note}")
-    if answer.partial_note:
-        st.warning(f"Not found in the retrieved passages: {escape_dollars(answer.partial_note)}")
+    partial_note = display_partial_note(answer.partial_note)
+    if partial_note:
+        st.warning(f"Not found in the retrieved passages: {escape_dollars(partial_note)}")
     st.caption(CITATION_CAPTION)
     for c in rendered.citations:
         chunk = c.chunk
